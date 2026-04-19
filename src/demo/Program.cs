@@ -8,7 +8,7 @@ internal class Program
 {
     private static void Main(string[] args)
     {
-        var input = "name eq 'foo' or name eq 'bar' and x.active"u8;
+        var input = "(name eq 'foo' or name eq @const1) and x.active"u8;
 
         // warmup to ensure JIT and one-time runtime paths are not included in the measurements.
         _ = Run(input);
@@ -24,6 +24,7 @@ internal class Program
         Console.WriteLine($"total allocated bytes: {totalAllocatedBytes}");
         Console.WriteLine($"resulting semantic graph: {semantic}");
         Console.WriteLine();
+        semantic.ToTree(Console.Out);
     }
 
 
@@ -31,7 +32,6 @@ internal class Program
     {
         using var arena = MemoryPool<byte>.Shared.Rent(65536);
 
-        // Changed per request: warm up JIT and one-time runtime paths before collecting allocation numbers.
         _ = ArenaParser.Parse(arena, input);
 
         var m0 = AllocationMeasurement.Start();
@@ -57,6 +57,12 @@ internal class Program
         return new MemoryStats(parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes, semantic);
     }
 
-    internal record MemoryStats(long ParsingAllocatedBytes, long WritingAllocatedBytes, long BindingAllocatedBytes, long TotalAllocatedBytes, SemanticNode Semantic);
+    internal record MemoryStats(
+        long ParsingAllocatedBytes,
+        long WritingAllocatedBytes,
+        long BindingAllocatedBytes,
+        long TotalAllocatedBytes,
+        SemanticNode Semantic
+    );
 }
 
