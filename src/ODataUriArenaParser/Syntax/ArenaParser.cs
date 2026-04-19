@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 
 namespace ODataUriArenaParser.Syntax;
 
-
 public static class ArenaParser
 {
     public static ArenaSyntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
@@ -12,8 +11,8 @@ public static class ArenaParser
         Span<byte> storage = arena.Memory.Span;
 
         int maxTokenCount = Math.Max(4, input.Length);
-        int maxNodeCount = 3;
-        int maxChildCount = 2;
+        int maxNodeCount = Math.Max(4, (maxTokenCount * 2) + 1);
+        int maxChildCount = maxNodeCount * 2;
 
         int required = input.Length;
         required = Align(required, 4);
@@ -48,49 +47,342 @@ public static class ArenaParser
             storage.Slice(cursor, maxChildCount * Unsafe.SizeOf<int>()));
 
         int tokenCount = Tokenize(request, tokenTable);
-        if (tokenCount != 3)
+        if (tokenCount == 0)
         {
-            throw new InvalidOperationException("Expected exactly 3 tokens.");
+            throw new InvalidOperationException("Expression is empty.");
         }
 
-        if (tokenTable[0].Kind != TokenKind.Identifier ||
-            tokenTable[1].Kind != TokenKind.OperatorEq ||
-            tokenTable[2].Kind != TokenKind.StringLiteral)
+        int nodeCount = 0;
+        int childCount = 0;
+        int tokenIndex = 0;
+
+        int rootNodeIndex = ParseOrExpression(
+            request,
+            tokenTable[..tokenCount],
+            ref tokenIndex,
+            nodeTable,
+            ref nodeCount,
+            childTable,
+            ref childCount);
+
+        if (tokenIndex != tokenCount)
         {
-            throw new InvalidOperationException("Expected: identifier eq 'literal'.");
+            throw new InvalidOperationException("Unexpected tokens at end of expression.");
         }
-
-        childTable[0] = 1;
-        childTable[1] = 2;
-
-        nodeTable[0] = new SyntaxNode
-        {
-            Kind = SyntaxKind.BinaryExpression,
-            FirstChild = 0,
-            ChildCount = 2,
-            Payload = (ushort)OperatorKind.Equal
-        };
-        nodeTable[1] = new SyntaxNode
-        {
-            Kind = SyntaxKind.PropertyAccess,
-            FirstChild = -1,
-            ChildCount = 0,
-            Payload = 0
-        };
-        nodeTable[2] = new SyntaxNode
-        {
-            Kind = SyntaxKind.Constant,
-            FirstChild = -1,
-            ChildCount = 0,
-            Payload = 2
-        };
 
         return new ArenaSyntax(
             request,
-            tokenTable.Slice(0, tokenCount),
-            nodeTable.Slice(0, 3),
-            childTable.Slice(0, 2),
-            0);
+            tokenTable[..tokenCount],
+            nodeTable[..nodeCount],
+            childTable[..childCount],
+            rootNodeIndex);
+    }
+
+    public static ArenaSyntax ParseConstant(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
+    {
+        return Parse(arena, input);
+    }
+
+    public static ArenaSyntax ParseProperty(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
+    {
+        return Parse(arena, input);
+    }
+
+    private static int ParseOrExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int left = ParseAndExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+
+        while (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorOr))
+        {
+            int right = ParseAndExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            left = CreateBinaryNode(OperatorKind.Or, left, right, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return left;
+    }
+
+    private static int ParseAndExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int left = ParseComparisonExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+
+        while (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorAnd))
+        {
+            int right = ParseComparisonExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            left = CreateBinaryNode(OperatorKind.And, left, right, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return left;
+    }
+
+    private static int ParseComparisonExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int left = ParseAdditiveExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+
+        while (true)
+        {
+            OperatorKind op;
+            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorEq))
+            {
+                op = OperatorKind.Equal;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorNe))
+            {
+                op = OperatorKind.NotEqual;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorLt))
+            {
+                op = OperatorKind.LessThan;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorLe))
+            {
+                op = OperatorKind.LessOrEqual;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorGt))
+            {
+                op = OperatorKind.GreaterThan;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorGe))
+            {
+                op = OperatorKind.GreaterOrEqual;
+            }
+            else
+            {
+                break;
+            }
+
+            int right = ParseAdditiveExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return left;
+    }
+
+    private static int ParseAdditiveExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int left = ParseMultiplicativeExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+
+        while (true)
+        {
+            OperatorKind op;
+            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorAdd))
+            {
+                op = OperatorKind.Add;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorSub))
+            {
+                op = OperatorKind.Subtract;
+            }
+            else
+            {
+                break;
+            }
+
+            int right = ParseMultiplicativeExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return left;
+    }
+
+    private static int ParseMultiplicativeExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int left = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+
+        while (true)
+        {
+            OperatorKind op;
+            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorMul))
+            {
+                op = OperatorKind.Multiply;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorDiv))
+            {
+                op = OperatorKind.Divide;
+            }
+            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorMod))
+            {
+                op = OperatorKind.Modulo;
+            }
+            else
+            {
+                break;
+            }
+
+            int right = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return left;
+    }
+
+    private static int ParseUnaryExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorNot))
+        {
+            int operand = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            return CreateUnaryNode(OperatorKind.Not, operand, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorSub))
+        {
+            int operand = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            return CreateUnaryNode(OperatorKind.Negate, operand, nodes, ref nodeCount, children, ref childCount);
+        }
+
+        return ParsePrimaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+    }
+
+    private static int ParsePrimaryExpression(
+        ReadOnlySpan<byte> request,
+        ReadOnlySpan<Token> tokens,
+        ref int tokenIndex,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        if (TryConsume(tokens, ref tokenIndex, TokenKind.OpenParen))
+        {
+            int nested = ParseOrExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+            if (!TryConsume(tokens, ref tokenIndex, TokenKind.CloseParen))
+            {
+                throw new InvalidOperationException("Missing closing parenthesis.");
+            }
+
+            return nested;
+        }
+
+        if (tokenIndex >= tokens.Length)
+        {
+            throw new InvalidOperationException("Unexpected end of expression.");
+        }
+
+        int currentTokenIndex = tokenIndex;
+        Token token = tokens[currentTokenIndex];
+        tokenIndex++;
+
+        return token.Kind switch
+        {
+            TokenKind.Identifier => CreateLeafNode(SyntaxKind.PropertyAccess, currentTokenIndex, nodes, ref nodeCount),
+            TokenKind.Variable => CreateLeafNode(SyntaxKind.VariableAccess, currentTokenIndex, nodes, ref nodeCount),
+            TokenKind.Literal => CreateLeafNode(SyntaxKind.Constant, currentTokenIndex, nodes, ref nodeCount),
+            _ => throw new InvalidOperationException($"Unexpected token kind in primary expression: {token.Kind}.")
+        };
+    }
+
+    private static int CreateLeafNode(SyntaxKind kind, int payload, Span<SyntaxNode> nodes, ref int nodeCount)
+    {
+        int index = nodeCount;
+        nodes[nodeCount++] = new SyntaxNode
+        {
+            Kind = kind,
+            FirstChild = -1,
+            ChildCount = 0,
+            Payload = checked((ushort)payload)
+        };
+
+        return index;
+    }
+
+    private static int CreateUnaryNode(
+        OperatorKind op,
+        int child,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int childStart = childCount;
+        children[childCount++] = child;
+
+        int index = nodeCount;
+        nodes[nodeCount++] = new SyntaxNode
+        {
+            Kind = SyntaxKind.UnaryExpression,
+            FirstChild = childStart,
+            ChildCount = 1,
+            Payload = (ushort)op
+        };
+
+        return index;
+    }
+
+    private static int CreateBinaryNode(
+        OperatorKind op,
+        int left,
+        int right,
+        Span<SyntaxNode> nodes,
+        ref int nodeCount,
+        Span<int> children,
+        ref int childCount)
+    {
+        int childStart = childCount;
+        children[childCount++] = left;
+        children[childCount++] = right;
+
+        int index = nodeCount;
+        nodes[nodeCount++] = new SyntaxNode
+        {
+            Kind = SyntaxKind.BinaryExpression,
+            FirstChild = childStart,
+            ChildCount = 2,
+            Payload = (ushort)op
+        };
+
+        return index;
+    }
+
+    private static bool TryConsume(ReadOnlySpan<Token> tokens, ref int tokenIndex, TokenKind kind)
+    {
+        if (tokenIndex < tokens.Length && tokens[tokenIndex].Kind == kind)
+        {
+            tokenIndex++;
+            return true;
+        }
+
+        return false;
     }
 
     private static int Tokenize(ReadOnlySpan<byte> request, Span<Token> tokens)
@@ -110,12 +402,38 @@ public static class ArenaParser
                 break;
             }
 
-            if (request[i] == (byte)'\'')
+            byte ch = request[i];
+            if (ch == (byte)'(')
+            {
+                tokens[count++] = new Token { Kind = TokenKind.OpenParen, Offset = i, Length = 1 };
+                i++;
+                continue;
+            }
+
+            if (ch == (byte)')')
+            {
+                tokens[count++] = new Token { Kind = TokenKind.CloseParen, Offset = i, Length = 1 };
+                i++;
+                continue;
+            }
+
+            if (ch == (byte)'\'')
             {
                 int start = i + 1;
                 i++;
-                while (i < request.Length && request[i] != (byte)'\'')
+                while (i < request.Length)
                 {
+                    if (request[i] == (byte)'\'')
+                    {
+                        if (i + 1 < request.Length && request[i + 1] == (byte)'\'')
+                        {
+                            i += 2;
+                            continue;
+                        }
+
+                        break;
+                    }
+
                     i++;
                 }
 
@@ -127,7 +445,7 @@ public static class ArenaParser
 
                 tokens[count++] = new Token
                 {
-                    Kind = TokenKind.StringLiteral,
+                    Kind = TokenKind.Literal,
                     Offset = start,
                     Length = len
                 };
@@ -136,15 +454,14 @@ public static class ArenaParser
             }
 
             int tokenStart = i;
-            while (i < request.Length && request[i] != (byte)' ')
+            while (i < request.Length && request[i] != (byte)' ' && request[i] != (byte)'(' && request[i] != (byte)')')
             {
                 i++;
             }
 
             int tokenLength = i - tokenStart;
-            TokenKind kind = IsEq(request.Slice(tokenStart, tokenLength))
-                ? TokenKind.OperatorEq
-                : TokenKind.Identifier;
+            ReadOnlySpan<byte> value = request.Slice(tokenStart, tokenLength);
+            TokenKind kind = ClassifyToken(value);
 
             tokens[count++] = new Token
             {
@@ -157,190 +474,206 @@ public static class ArenaParser
         return count;
     }
 
-    private static bool IsEq(ReadOnlySpan<byte> value)
+    private static TokenKind ClassifyToken(ReadOnlySpan<byte> value)
     {
-        return value.Length == 2 && value[0] == (byte)'e' && value[1] == (byte)'q';
+        if (value.Length == 0)
+        {
+            throw new InvalidOperationException("Token cannot be empty.");
+        }
+
+        if (IsAscii(value, "or"))
+        {
+            return TokenKind.OperatorOr;
+        }
+
+        if (IsAscii(value, "and"))
+        {
+            return TokenKind.OperatorAnd;
+        }
+
+        if (IsAscii(value, "not"))
+        {
+            return TokenKind.OperatorNot;
+        }
+
+        if (IsAscii(value, "eq"))
+        {
+            return TokenKind.OperatorEq;
+        }
+
+        if (IsAscii(value, "ne"))
+        {
+            return TokenKind.OperatorNe;
+        }
+
+        if (IsAscii(value, "lt"))
+        {
+            return TokenKind.OperatorLt;
+        }
+
+        if (IsAscii(value, "le"))
+        {
+            return TokenKind.OperatorLe;
+        }
+
+        if (IsAscii(value, "gt"))
+        {
+            return TokenKind.OperatorGt;
+        }
+
+        if (IsAscii(value, "ge"))
+        {
+            return TokenKind.OperatorGe;
+        }
+
+        if (IsAscii(value, "add"))
+        {
+            return TokenKind.OperatorAdd;
+        }
+
+        if (IsAscii(value, "sub"))
+        {
+            return TokenKind.OperatorSub;
+        }
+
+        if (IsAscii(value, "mul"))
+        {
+            return TokenKind.OperatorMul;
+        }
+
+        if (IsAscii(value, "div"))
+        {
+            return TokenKind.OperatorDiv;
+        }
+
+        if (IsAscii(value, "mod"))
+        {
+            return TokenKind.OperatorMod;
+        }
+
+        if (value[0] == (byte)'@' || IsAscii(value, "$it") || IsAscii(value, "$this"))
+        {
+            return TokenKind.Variable;
+        }
+
+        if (IsLiteralToken(value))
+        {
+            return TokenKind.Literal;
+        }
+
+        return TokenKind.Identifier;
+    }
+
+    private static bool IsLiteralToken(ReadOnlySpan<byte> value)
+    {
+        if (IsAscii(value, "null") || IsAscii(value, "true") || IsAscii(value, "false"))
+        {
+            return true;
+        }
+
+        if (IsAscii(value, "NaN") || IsAscii(value, "INF") || IsAscii(value, "-INF"))
+        {
+            return true;
+        }
+
+        if (StartsWithAscii(value, "duration'") && EndsWith(value, (byte)'\''))
+        {
+            return true;
+        }
+
+        if (StartsWithAscii(value, "guid'") && EndsWith(value, (byte)'\''))
+        {
+            return true;
+        }
+
+        if (StartsWithAscii(value, "binary'") && EndsWith(value, (byte)'\''))
+        {
+            return true;
+        }
+
+        if (Contains(value, (byte)':') || Contains(value, (byte)'T'))
+        {
+            return true;
+        }
+
+        bool hasDigit = false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            byte ch = value[i];
+            if (ch >= (byte)'0' && ch <= (byte)'9')
+            {
+                hasDigit = true;
+                continue;
+            }
+
+            if (ch == (byte)'-' || ch == (byte)'+' || ch == (byte)'.' || ch == (byte)'e' || ch == (byte)'E')
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return hasDigit;
+    }
+
+    private static bool IsAscii(ReadOnlySpan<byte> value, string text)
+    {
+        if (value.Length != text.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (value[i] != (byte)text[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool StartsWithAscii(ReadOnlySpan<byte> value, string prefix)
+    {
+        if (value.Length < prefix.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < prefix.Length; i++)
+        {
+            if (value[i] != (byte)prefix[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool EndsWith(ReadOnlySpan<byte> value, byte last)
+    {
+        return value.Length > 0 && value[^1] == last;
+    }
+
+    private static bool Contains(ReadOnlySpan<byte> value, byte ch)
+    {
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == ch)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int Align(int value, int alignment)
     {
         int mask = alignment - 1;
         return (value + mask) & ~mask;
-    }
-
-
-    public static ArenaSyntax ParseConstant(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
-    {
-        Span<byte> storage = arena.Memory.Span;
-
-        int maxTokenCount = 1;
-        int maxNodeCount = 1;
-
-        int required = input.Length;
-        required = Align(required, 4);
-        required += maxTokenCount * Unsafe.SizeOf<Token>();
-        required = Align(required, 4);
-        required += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
-
-        if (storage.Length < required)
-        {
-            throw new ArgumentException("Arena is too small for parse output.", nameof(arena));
-        }
-
-        int cursor = 0;
-        Span<byte> request = storage.Slice(cursor, input.Length);
-        input.CopyTo(request);
-        cursor += input.Length;
-
-        cursor = Align(cursor, 4);
-        Span<Token> tokenTable = MemoryMarshal.Cast<byte, Token>(
-            storage.Slice(cursor, maxTokenCount * Unsafe.SizeOf<Token>()));
-        cursor += maxTokenCount * Unsafe.SizeOf<Token>();
-
-        cursor = Align(cursor, 4);
-        Span<SyntaxNode> nodeTable = MemoryMarshal.Cast<byte, SyntaxNode>(
-            storage.Slice(cursor, maxNodeCount * Unsafe.SizeOf<SyntaxNode>()));
-
-        int tokenCount = TokenizeIdentifierOrStringLiteral(request, tokenTable);
-        if (tokenCount != 1)
-        {
-            throw new InvalidOperationException("Expected exactly 1 token for constant expression.");
-        }
-
-        if (tokenTable[0].Kind != TokenKind.StringLiteral)
-        {
-            throw new InvalidOperationException("Expected string literal token.");
-        }
-
-        nodeTable[0] = new SyntaxNode
-        {
-            Kind = SyntaxKind.Constant,
-            FirstChild = -1,
-            ChildCount = 0,
-            Payload = 0
-        };
-
-        return new ArenaSyntax(
-            request,
-            tokenTable.Slice(0, tokenCount),
-            nodeTable.Slice(0, 1),
-            ReadOnlySpan<int>.Empty,
-            0);
-    }
-
-    public static ArenaSyntax ParseProperty(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
-    {
-        Span<byte> storage = arena.Memory.Span;
-
-        int maxTokenCount = 1;
-        int maxNodeCount = 1;
-
-        int required = input.Length;
-        required = Align(required, 4);
-        required += maxTokenCount * Unsafe.SizeOf<Token>();
-        required = Align(required, 4);
-        required += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
-
-        if (storage.Length < required)
-        {
-            throw new ArgumentException("Arena is too small for parse output.", nameof(arena));
-        }
-
-        int cursor = 0;
-        Span<byte> request = storage.Slice(cursor, input.Length);
-        input.CopyTo(request);
-        cursor += input.Length;
-
-        cursor = Align(cursor, 4);
-        Span<Token> tokenTable = MemoryMarshal.Cast<byte, Token>(
-            storage.Slice(cursor, maxTokenCount * Unsafe.SizeOf<Token>()));
-        cursor += maxTokenCount * Unsafe.SizeOf<Token>();
-
-        cursor = Align(cursor, 4);
-        Span<SyntaxNode> nodeTable = MemoryMarshal.Cast<byte, SyntaxNode>(
-            storage.Slice(cursor, maxNodeCount * Unsafe.SizeOf<SyntaxNode>()));
-
-        int tokenCount = TokenizeIdentifierOrStringLiteral(request, tokenTable);
-        if (tokenCount != 1)
-        {
-            throw new InvalidOperationException("Expected exactly 1 token for property expression.");
-        }
-
-        if (tokenTable[0].Kind != TokenKind.Identifier)
-        {
-            throw new InvalidOperationException("Expected identifier token.");
-        }
-
-        nodeTable[0] = new SyntaxNode
-        {
-            Kind = SyntaxKind.PropertyAccess,
-            FirstChild = -1,
-            ChildCount = 0,
-            Payload = 0
-        };
-
-        return new ArenaSyntax(
-            request,
-            tokenTable.Slice(0, tokenCount),
-            nodeTable.Slice(0, 1),
-            ReadOnlySpan<int>.Empty,
-            0);
-    }
-
-    private static int TokenizeIdentifierOrStringLiteral(ReadOnlySpan<byte> request, Span<Token> tokens)
-    {
-        int i = 0;
-        int count = 0;
-
-        while (i < request.Length && request[i] == (byte)' ')
-        {
-            i++;
-        }
-
-        if (i >= request.Length)
-        {
-            return count;
-        }
-
-        if (request[i] == (byte)'\'')
-        {
-            int start = i + 1;
-            i++;
-            while (i < request.Length && request[i] != (byte)'\'')
-            {
-                i++;
-            }
-
-            int len = i - start;
-            if (i < request.Length && request[i] == (byte)'\'')
-            {
-                i++;
-            }
-
-            tokens[count++] = new Token
-            {
-                Kind = TokenKind.StringLiteral,
-                Offset = start,
-                Length = len
-            };
-        }
-        else
-        {
-            int tokenStart = i;
-            while (i < request.Length && request[i] != (byte)' ')
-            {
-                i++;
-            }
-
-            int tokenLength = i - tokenStart;
-            tokens[count++] = new Token
-            {
-                Kind = TokenKind.Identifier,
-                Offset = tokenStart,
-                Length = tokenLength
-            };
-        }
-
-        return count;
     }
 }

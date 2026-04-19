@@ -47,8 +47,14 @@ public static class ArenaSerializer
             case SyntaxKind.BinaryExpression:
                 WriteBinary(node, syntax, writer);
                 break;
+            case SyntaxKind.UnaryExpression:
+                WriteUnary(node, syntax, writer);
+                break;
             case SyntaxKind.PropertyAccess:
                 WritePropertyAccess(syntax, node, writer);
+                break;
+            case SyntaxKind.VariableAccess:
+                WriteVariableAccess(syntax, node, writer);
                 break;
             case SyntaxKind.Constant:
                 WriteConstant(syntax, node, writer);
@@ -78,8 +84,44 @@ public static class ArenaSerializer
         WriteNode(leftNodeIndex, syntax, writer);
         switch ((OperatorKind)node.Payload)
         {
+            case OperatorKind.Or:
+                writer.Write(" or ");
+                break;
+            case OperatorKind.And:
+                writer.Write(" and ");
+                break;
             case OperatorKind.Equal:
                 writer.Write(" eq ");
+                break;
+            case OperatorKind.NotEqual:
+                writer.Write(" ne ");
+                break;
+            case OperatorKind.LessThan:
+                writer.Write(" lt ");
+                break;
+            case OperatorKind.LessOrEqual:
+                writer.Write(" le ");
+                break;
+            case OperatorKind.GreaterThan:
+                writer.Write(" gt ");
+                break;
+            case OperatorKind.GreaterOrEqual:
+                writer.Write(" ge ");
+                break;
+            case OperatorKind.Add:
+                writer.Write(" add ");
+                break;
+            case OperatorKind.Subtract:
+                writer.Write(" sub ");
+                break;
+            case OperatorKind.Multiply:
+                writer.Write(" mul ");
+                break;
+            case OperatorKind.Divide:
+                writer.Write(" div ");
+                break;
+            case OperatorKind.Modulo:
+                writer.Write(" mod ");
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported operator kind: {(OperatorKind)node.Payload}.");
@@ -90,14 +132,45 @@ public static class ArenaSerializer
 
     private static void WriteConstant(ArenaSyntax syntax, SyntaxNode node, TextWriter writer)
     {
-        WriteTokenText(node.Payload, TokenKind.StringLiteral, syntax, writer);
+        WriteTokenText(node.Payload, TokenKind.Literal, syntax, writer);
     }
 
     private static void WritePropertyAccess(ArenaSyntax syntax, SyntaxNode node, TextWriter writer)
     {
-        writer.Write('"');
         WriteTokenText(node.Payload, TokenKind.Identifier, syntax, writer);
-        writer.Write('"');
+    }
+
+    private static void WriteVariableAccess(ArenaSyntax syntax, SyntaxNode node, TextWriter writer)
+    {
+        WriteTokenText(node.Payload, TokenKind.Variable, syntax, writer);
+    }
+
+    private static void WriteUnary(SyntaxNode node, ArenaSyntax syntax, TextWriter writer)
+    {
+        if (node.ChildCount != 1)
+        {
+            throw new InvalidOperationException("Unary expression must have exactly one child.");
+        }
+
+        var (_, _, children, _, _) = syntax;
+        if (node.FirstChild < 0 || node.FirstChild >= children.Length)
+        {
+            throw new InvalidOperationException("Unary expression child range is invalid.");
+        }
+
+        switch ((OperatorKind)node.Payload)
+        {
+            case OperatorKind.Not:
+                writer.Write("not ");
+                break;
+            case OperatorKind.Negate:
+                writer.Write("-");
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported unary operator kind: {(OperatorKind)node.Payload}.");
+        }
+
+        WriteNode(children[node.FirstChild], syntax, writer);
     }
 
     private static void WriteTokenText(int tokenIndex, TokenKind expectedKind, ArenaSyntax syntax, TextWriter writer)

@@ -12,7 +12,9 @@ public abstract class SemanticNode
             BinaryOperatorNode binaryNode => $"{{BinaryNode {binaryNode.Left} {binaryNode.Operator} {binaryNode.Right}}}",
             ConstantNode constantNode => $"{{ConstantNode {constantNode.Value})}}",
             PropertyAccessNode propertyAccessNode => $"{{PropertyAccessNode {propertyAccessNode.Name}}}",
-            _ => throw new InvalidOperationException($"Unknown semantic node type: {GetType().Name}"),
+            VariableAccessNode variableAccessNode => $"{{VariableAccessNode {variableAccessNode.Name}}}",
+            UnaryOperatorNode unaryOperatorNode => $"{{UnaryNode {unaryOperatorNode.Operator} {unaryOperatorNode.Operand}}}",
+            _ => throw new InvalidOperationException($"Unknown semantic node type: {GetType().Name}")
         };
     }
 }

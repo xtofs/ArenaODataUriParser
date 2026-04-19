@@ -1,19 +1,20 @@
 ﻿using System.Buffers;
-using System.IO;
 using ODataUriArenaParser.Binding;
 using ODataUriArenaParser.Semantic;
 using ODataUriArenaParser.Syntax;
-
-
 
 
 internal class Program
 {
     private static void Main(string[] args)
     {
-        _ = Run("name eq 'foo'"u8);
-        var stats = Run("name eq 'foo'"u8);
+        var input = "name eq 'foo' or name eq 'bar' and x.active"u8;
 
+        // warmup to ensure JIT and one-time runtime paths are not included in the measurements.
+        _ = Run(input);
+
+        // actually measure
+        var stats = Run(input);
 
 
         var (parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes, semantic) = stats;
@@ -55,6 +56,7 @@ internal class Program
 
         return new MemoryStats(parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes, semantic);
     }
+
+    internal record MemoryStats(long ParsingAllocatedBytes, long WritingAllocatedBytes, long BindingAllocatedBytes, long TotalAllocatedBytes, SemanticNode Semantic);
 }
 
-internal record MemoryStats(long ParsingAllocatedBytes, long WritingAllocatedBytes, long BindingAllocatedBytes, long TotalAllocatedBytes, SemanticNode Semantic);

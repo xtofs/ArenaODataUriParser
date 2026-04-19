@@ -26,18 +26,43 @@ public static class ArenaBinder
             SyntaxKind.BinaryExpression => BindBinary(node, syntax),
             SyntaxKind.PropertyAccess => BindPropertyAccess(syntax, node),
             SyntaxKind.Constant => BindConstant(syntax, node),
+            SyntaxKind.VariableAccess => BindVariableAccess(syntax, node),
+            SyntaxKind.UnaryExpression => BindUnary(node, syntax),
             _ => throw new InvalidOperationException($"Unsupported syntax kind: {node.Kind}.")
         };
     }
 
     private static ConstantNode BindConstant(ArenaSyntax syntax, SyntaxNode node)
     {
-        return new ConstantNode(ReadTokenText(node.Payload, TokenKind.StringLiteral, syntax));
+        return new ConstantNode(ReadTokenText(node.Payload, TokenKind.Literal, syntax));
     }
 
     private static PropertyAccessNode BindPropertyAccess(ArenaSyntax syntax, SyntaxNode node)
     {
         return new PropertyAccessNode(ReadTokenText(node.Payload, TokenKind.Identifier, syntax));
+    }
+
+    private static VariableAccessNode BindVariableAccess(ArenaSyntax syntax, SyntaxNode node)
+    {
+        return new VariableAccessNode(ReadTokenText(node.Payload, TokenKind.Variable, syntax));
+    }
+
+    private static UnaryOperatorNode BindUnary(SyntaxNode node, ArenaSyntax syntax)
+    {
+        if (node.ChildCount != 1)
+        {
+            throw new InvalidOperationException("Unary expression must have exactly one child.");
+        }
+
+        var (_, _, children, _, _) = syntax;
+        if (node.FirstChild < 0 || node.FirstChild >= children.Length)
+        {
+            throw new InvalidOperationException("Unary expression child range is invalid.");
+        }
+
+        int operandNodeIndex = children[node.FirstChild];
+        SemanticNode operand = BindNode(operandNodeIndex, syntax);
+        return new UnaryOperatorNode((OperatorKind)node.Payload, operand);
     }
 
     private static BinaryOperatorNode BindBinary(SyntaxNode node, ArenaSyntax syntax)
