@@ -19,6 +19,12 @@ public static class ArenaSerializer
         WriteNode(syntax.RootNodeIndex, syntax, writer);
     }
 
+    public static void WriteLine(this ArenaSyntax syntax, TextWriter writer)
+    {
+        WriteNode(syntax.RootNodeIndex, syntax, writer);
+        writer.WriteLine();
+    }
+
     // // Kept for compatibility while routing through TextWriter-based implementation.
     // public static void Serialize(this ArenaSyntax syntax, StringBuilder builder)
     // {

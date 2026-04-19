@@ -1,49 +1,60 @@
 ﻿using System.Buffers;
 using System.IO;
 using ODataUriArenaParser.Binding;
+using ODataUriArenaParser.Semantic;
 using ODataUriArenaParser.Syntax;
 
-using var arena = MemoryPool<byte>.Shared.Rent(65536);
-ReadOnlySpan<byte> input = "ame eq 'foo'"u8;
 
-// Changed per request: warm up JIT and one-time runtime paths before collecting allocation numbers.
-_ = ArenaParser.Parse(arena, input);
 
-var m0 = AllocationMeasurement.Start();
 
-var m1 = AllocationMeasurement.Start();
-var syntax = ArenaParser.Parse(arena, input);
-var parsingAllocatedBytes = m1.Stop();
+internal class Program
+{
+    private static void Main(string[] args)
+    {
+        _ = Run("name eq 'foo'"u8);
+        var stats = Run("name eq 'foo'"u8);
 
-var m2 = AllocationMeasurement.Start();
-// Measure serializer cost without Console.Out side effects.
-syntax.Write(TextWriter.Null);
-var writingAllocatedBytes = m2.Stop();
 
-var m3 = AllocationMeasurement.Start();
-var semantic = syntax.Bind();
-var bindingAllocatedBytes = m3.Stop();
 
-// dispose the arena after all operations are done 
-arena.Dispose();
+        var (parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes, semantic) = stats;
+        Console.WriteLine($"parsing allocated bytes: {parsingAllocatedBytes}");
+        Console.WriteLine($"writing allocated bytes: {writingAllocatedBytes}");
+        Console.WriteLine($"binding allocated bytes: {bindingAllocatedBytes}");
+        Console.WriteLine($"total allocated bytes: {totalAllocatedBytes}");
+        Console.WriteLine($"resulting semantic graph: {semantic}");
+        Console.WriteLine();
+    }
 
-var totalAllocatedBytes = m0.Stop();
 
-// Changed per request: all Console.WriteLine calls now happen after every Stop call.
-Console.WriteLine();
-syntax.Write(Console.Out);
-Console.WriteLine();
-Console.WriteLine("measuring parsing allocations and syntax graph materialization");
-Console.WriteLine($"parsing allocated bytes: {parsingAllocatedBytes}");
-Console.WriteLine();
+    static MemoryStats Run(ReadOnlySpan<byte> input)
+    {
+        using var arena = MemoryPool<byte>.Shared.Rent(65536);
 
-Console.WriteLine("measuring serialization allocations");
-Console.WriteLine($"writing allocated bytes: {writingAllocatedBytes}");
-Console.WriteLine();
+        // Changed per request: warm up JIT and one-time runtime paths before collecting allocation numbers.
+        _ = ArenaParser.Parse(arena, input);
 
-Console.WriteLine("measuring binding allocations and semantic graph materialization");
-Console.WriteLine(semantic);
-Console.WriteLine($"binding allocated bytes: {bindingAllocatedBytes}");
-Console.WriteLine();
+        var m0 = AllocationMeasurement.Start();
 
-Console.WriteLine($"total allocated bytes: {totalAllocatedBytes}");
+        var m1 = AllocationMeasurement.Start();
+        var syntax = ArenaParser.Parse(arena, input);
+        var parsingAllocatedBytes = m1.Stop();
+
+        var m2 = AllocationMeasurement.Start();
+        // Measure serializer cost without Console.Out side effects.
+        syntax.Write(TextWriter.Null);
+        var writingAllocatedBytes = m2.Stop();
+
+        var m3 = AllocationMeasurement.Start();
+        var semantic = syntax.Bind();
+        var bindingAllocatedBytes = m3.Stop();
+
+        // dispose the arena after all operations are done 
+        arena.Dispose();
+
+        var totalAllocatedBytes = m0.Stop();
+
+        return new MemoryStats(parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes, semantic);
+    }
+}
+
+internal record MemoryStats(long ParsingAllocatedBytes, long WritingAllocatedBytes, long BindingAllocatedBytes, long TotalAllocatedBytes, SemanticNode Semantic);
