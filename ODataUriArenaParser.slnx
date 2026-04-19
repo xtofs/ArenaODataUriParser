@@ -1,0 +1,8 @@
+
+<Solution>
+    <Folder Name="/src/">
+        <Project Path="src/demo/demo.csproj" />
+    </Folder>
+    <Project Path="src/ODataUriArenaParser/ODataUriArenaParser.csproj" />
+    <Project Path="tests/ODataUriArenaParser.Tests/ODataUriArenaParser.Tests.csproj" />
+</Solution>
