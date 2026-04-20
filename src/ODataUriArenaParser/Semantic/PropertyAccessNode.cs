@@ -1,4 +1,4 @@
-namespace ODataUriArenaParser.Semantic;
+namespace ODataUriParser.Semantic;
 
 
 public sealed class PropertyAccessNode(string name) : SemanticNode

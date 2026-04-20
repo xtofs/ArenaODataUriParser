@@ -1,6 +1,6 @@
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Benchmarks;
+namespace ODataUriParser.Benchmarks;
 
 internal sealed class SyntaxSnapshot(
     byte[] requestBuffer,
@@ -15,7 +15,7 @@ internal sealed class SyntaxSnapshot(
     public int[] Children { get; } = children;
     public int RootNodeIndex { get; } = rootNodeIndex;
 
-    public static SyntaxSnapshot FromSyntax(ArenaSyntax syntax)
+    public static SyntaxSnapshot FromSyntax(Syntax.Syntax syntax)
     {
 
         return new SyntaxSnapshot(
@@ -26,9 +26,9 @@ internal sealed class SyntaxSnapshot(
             syntax.RootNodeIndex);
     }
 
-    public ArenaSyntax ToArenaSyntax()
+    public Syntax.Syntax ToSyntax()
     {
 
-        return new ArenaSyntax(RequestBuffer, Tokens, Nodes, Children, RootNodeIndex);
+        return new Syntax.Syntax(RequestBuffer, Tokens, Nodes, Children, RootNodeIndex);
     }
 }

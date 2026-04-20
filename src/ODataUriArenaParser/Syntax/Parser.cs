@@ -2,51 +2,23 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace ODataUriArenaParser.Syntax;
+namespace ODataUriParser.Syntax;
 
-public static class ArenaParser
+public static class Parser
 {
 
-    public static int GetRequiredArenaSize(int inputLength)
-    {
-        if (inputLength < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(inputLength));
-        }
 
-        var (_, _, _, required) = GetArenaLayout(inputLength);
-        return required;
-    }
-
-
-    public static int GetRequiredArenaSize(ReadOnlySpan<byte> input)
-    {
-        return GetRequiredArenaSize(input.Length);
-    }
-
-
-    public static IMemoryOwner<byte> RentArena(int inputLength, MemoryPool<byte>? pool = null)
-    {
-        return (pool ?? MemoryPool<byte>.Shared).Rent(GetRequiredArenaSize(inputLength));
-    }
-
-
-    public static IMemoryOwner<byte> RentArena(ReadOnlySpan<byte> input, MemoryPool<byte>? pool = null)
-    {
-        return RentArena(input.Length, pool);
-    }
-
-    public static ArenaSyntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
+    public static Syntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
         // Parse pipeline overview:
         // 1) Partition one arena into request/token/node/child tables.
         // 2) Tokenize into tokenTable.
         // 3) Parse with precedence methods while threading shared mutable state
         //    (tokenIndex, nodeCount, childCount).
-        // 4) Return compact slices as ArenaSyntax.
+        // 4) Return compact slices as Syntax.
         Span<byte> storage = arena.Memory.Span;
 
-        var (maxTokenCount, maxNodeCount, maxChildCount, required) = GetArenaLayout(input.Length);
+        var (maxTokenCount, maxNodeCount, maxChildCount, required) = Arena.GetArenaLayout(input.Length);
 
         if (storage.Length < required)
         {
@@ -58,21 +30,21 @@ public static class ArenaParser
         input.CopyTo(request);
         cursor += input.Length;
 
-        cursor = Align(cursor, 4);
+        cursor = Arena.Align(cursor, 4);
         Span<Token> tokenTable = MemoryMarshal.Cast<byte, Token>(
             storage.Slice(cursor, maxTokenCount * Unsafe.SizeOf<Token>()));
         cursor += maxTokenCount * Unsafe.SizeOf<Token>();
 
-        cursor = Align(cursor, 4);
+        cursor = Arena.Align(cursor, 4);
         Span<SyntaxNode> nodeTable = MemoryMarshal.Cast<byte, SyntaxNode>(
             storage.Slice(cursor, maxNodeCount * Unsafe.SizeOf<SyntaxNode>()));
         cursor += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
 
-        cursor = Align(cursor, 4);
+        cursor = Arena.Align(cursor, 4);
         Span<int> childTable = MemoryMarshal.Cast<byte, int>(
             storage.Slice(cursor, maxChildCount * Unsafe.SizeOf<int>()));
 
-        int tokenCount = ArenaTokenizer.Tokenize(request, tokenTable);
+        int tokenCount = Tokenizer.Tokenize(request, tokenTable);
         if (tokenCount == 0)
         {
             throw new InvalidOperationException("Expression is empty.");
@@ -89,7 +61,7 @@ public static class ArenaParser
             throw new InvalidOperationException("Unexpected tokens at end of expression.");
         }
 
-        return new ArenaSyntax(
+        return new Syntax(
             request,
             parseInput.Tokens,
             parseState.Nodes[..parseState.NodeCount],
@@ -97,16 +69,21 @@ public static class ArenaParser
             rootNodeIndex);
     }
 
-    public static ArenaSyntax ParseConstant(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
+    public static Syntax ParseConstant(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
         return Parse(arena, input);
     }
 
-    public static ArenaSyntax ParseProperty(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
+    public static Syntax ParseProperty(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
         return Parse(arena, input);
     }
 
+    // /////////////////////////////////////////////////////////////////////////////////
+    // Helper types and methods for parsing with shared mutable state.
+
+    // ParseInput is a ref struct to ensure it stays on the stack and isn't accidentally captured by lambdas or async methods.
+    // It holds the immutable input data for the parser, including the request buffer and the token table.
     private readonly ref struct ParseInput
     {
         public ParseInput(ReadOnlySpan<byte> request, ReadOnlySpan<Token> tokens)
@@ -119,6 +96,8 @@ public static class ArenaParser
         public ReadOnlySpan<Token> Tokens { get; }
     }
 
+    // ParseState is a ref struct to ensure it stays on the stack and isn't accidentally captured by lambdas or async methods.
+    // It holds the mutable state of the parser, including the current token index and the counts of nodes and children created so far.
     private ref struct ParseState
     {
         public ParseState(Span<SyntaxNode> nodes, Span<int> children)
@@ -381,13 +360,34 @@ public static class ArenaParser
         return false;
     }
 
-    private static int Align(int value, int alignment)
+}
+
+public static class Arena
+{
+
+    public static IMemoryOwner<byte> RentArena(ReadOnlySpan<byte> input, MemoryPool<byte>? pool = null)
+    {
+        return (pool ?? MemoryPool<byte>.Shared).Rent(GetRequiredArenaSize(input.Length));
+    }
+
+    internal static int Align(int value, int alignment)
     {
         int mask = alignment - 1;
         return (value + mask) & ~mask;
     }
 
-    private static (int MaxTokenCount, int MaxNodeCount, int MaxChildCount, int RequiredBytes) GetArenaLayout(int inputLength)
+    internal static int GetRequiredArenaSize(int inputLength)
+    {
+        if (inputLength < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(inputLength));
+        }
+
+        var (_, _, _, required) = GetArenaLayout(inputLength);
+        return required;
+    }
+
+    internal static (int MaxTokenCount, int MaxNodeCount, int MaxChildCount, int RequiredBytes) GetArenaLayout(int inputLength)
     {
         // Keep arena sizing and alignment in one place so parser and callers stay consistent.
         int maxTokenCount = Math.Max(4, inputLength);

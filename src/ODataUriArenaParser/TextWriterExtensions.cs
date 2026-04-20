@@ -2,7 +2,7 @@ using System.Text;
 using System.Buffers;
 using System.IO;
 
-namespace ODataUriArenaParser.Binding;
+namespace ODataUriParser.Binding;
 
 static class TextWriterExtensions
 {

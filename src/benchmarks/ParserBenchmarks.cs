@@ -1,9 +1,9 @@
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Order;
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Benchmarks;
+namespace ODataUriParser.Benchmarks;
 
 [MemoryDiagnoser]
 [ShortRunJob]
@@ -29,8 +29,8 @@ public class ParserBenchmarks
     public int Parse()
     {
 
-        using var arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.Parse(arena, input);
+        using var arena = Arena.RentArena(input);
+        var syntax = Parser.Parse(arena, input);
         return syntax.RootNodeIndex;
     }
 }

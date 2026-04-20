@@ -5,7 +5,7 @@ using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
-using ODataUriArenaParser.Benchmarks;
+using ODataUriParser.Benchmarks;
 
 // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 

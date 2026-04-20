@@ -9,7 +9,7 @@
 /// <param name="style"></param>
 /// <remarks>based on Andrew Lock's implementation: https://andrewlock.net/creating-a-tree-view-in-csharp/</remarks>
 public readonly record struct TreeFormatter<TNode>(
-    Func<TNode, string> GetText,
+    Func<TNode, string> GetLabel,
     Func<TNode, IReadOnlyCollection<TNode>> GetChildren)
 {
 
@@ -26,7 +26,7 @@ public readonly record struct TreeFormatter<TNode>(
 
     private void FormatNode(TNode node, TextWriter writer, TreeStyle style, string indent, bool isLast)
     {
-        var text = this.GetText(node);
+        var text = this.GetLabel(node);
         var prefix = isLast ? style.LastBranch : style.Branch;
         writer.WriteLine($"{indent}{prefix}{text}");
 

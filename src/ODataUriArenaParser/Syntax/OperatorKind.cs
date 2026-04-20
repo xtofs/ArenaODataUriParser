@@ -1,4 +1,4 @@
-namespace ODataUriArenaParser.Syntax;
+namespace ODataUriParser.Syntax;
 
 public enum OperatorKind : ushort
 {

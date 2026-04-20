@@ -1,17 +1,17 @@
 using System.Text;
-using ODataUriArenaParser.Semantic;
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Semantic;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Binding;
+namespace ODataUriParser.Binding;
 
-public static class ArenaBinder
+public static class SyntaxBinder
 {
-    public static SemanticNode Bind(this ArenaSyntax syntax)
+    public static SemanticNode Bind(this Syntax.Syntax syntax)
     {
         return BindNode(syntax.RootNodeIndex, syntax);
     }
 
-    private static SemanticNode BindNode(int nodeIndex, ArenaSyntax syntax)
+    private static SemanticNode BindNode(int nodeIndex, Syntax.Syntax syntax)
     {
         var (nodes, _, _, _, _) = syntax;
 
@@ -32,22 +32,22 @@ public static class ArenaBinder
         };
     }
 
-    private static ConstantNode BindConstant(ArenaSyntax syntax, SyntaxNode node)
+    private static ConstantNode BindConstant(Syntax.Syntax syntax, SyntaxNode node)
     {
         return new ConstantNode(node.GetTokenText(syntax));
     }
 
-    private static PropertyAccessNode BindPropertyAccess(ArenaSyntax syntax, SyntaxNode node)
+    private static PropertyAccessNode BindPropertyAccess(Syntax.Syntax syntax, SyntaxNode node)
     {
         return new PropertyAccessNode(node.GetTokenText(syntax));
     }
 
-    private static VariableAccessNode BindVariableAccess(ArenaSyntax syntax, SyntaxNode node)
+    private static VariableAccessNode BindVariableAccess(Syntax.Syntax syntax, SyntaxNode node)
     {
         return new VariableAccessNode(node.GetTokenText(syntax));
     }
 
-    private static UnaryOperatorNode BindUnary(SyntaxNode node, ArenaSyntax syntax)
+    private static UnaryOperatorNode BindUnary(SyntaxNode node, Syntax.Syntax syntax)
     {
         if (node.ChildCount != 1)
         {
@@ -65,7 +65,7 @@ public static class ArenaBinder
         return new UnaryOperatorNode((OperatorKind)node.Payload, operand);
     }
 
-    private static BinaryOperatorNode BindBinary(SyntaxNode node, ArenaSyntax syntax)
+    private static BinaryOperatorNode BindBinary(SyntaxNode node, Syntax.Syntax syntax)
     {
         if (node.ChildCount != 2)
         {
@@ -89,7 +89,7 @@ public static class ArenaBinder
     }
 
     [Obsolete("use node.GetTokenText extension method instead")]
-    private static string ReadTokenText(int tokenIndex, TokenKind expectedKind, ArenaSyntax syntax)
+    private static string ReadTokenText(int tokenIndex, TokenKind expectedKind, Syntax.Syntax syntax)
     {
         var (_, tokens, _, buffer, _) = syntax;
 

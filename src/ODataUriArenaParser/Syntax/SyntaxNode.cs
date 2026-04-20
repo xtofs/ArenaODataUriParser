@@ -2,7 +2,7 @@ using System.Dynamic;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace ODataUriArenaParser.Syntax;
+namespace ODataUriParser.Syntax;
 
 public struct SyntaxNode
 {
@@ -16,7 +16,7 @@ public struct SyntaxNode
         return $"{Kind} (Payload: {Payload}, Children: {ChildCount})";
     }
 
-    internal readonly ReadOnlySpan<byte> GetTokenSpan(ArenaSyntax syntax)
+    internal readonly ReadOnlySpan<byte> GetTokenSpan(Syntax syntax)
     {
         var tokenIndex = this.Payload;
         var (_, tokens, _, buffer, _) = syntax;
@@ -36,7 +36,7 @@ public struct SyntaxNode
         return buffer.Slice(token.Offset, token.Length);
     }
 
-    internal readonly string GetTokenText(ArenaSyntax syntax)
+    internal readonly string GetTokenText(Syntax syntax)
     {
         return Encoding.UTF8.GetString(GetTokenSpan(syntax));
     }
@@ -48,5 +48,27 @@ public struct SyntaxNode
             throw new InvalidOperationException($"Cannot get operator kind from syntax node of kind {Kind}.");
         }
         return (OperatorKind)Payload;
+    }
+
+    internal readonly IReadOnlyList<SyntaxNode> GetChildren(Syntax syntax)
+    {
+        if (ChildCount == 0)
+        {
+            return [];
+        }
+
+        var (nodes, _, children, _, _) = syntax;
+
+        var result = new SyntaxNode[ChildCount];
+        for (int i = 0; i < ChildCount; i++)
+        {
+            int childIndex = children[FirstChild + i];
+            if (childIndex < 0 || childIndex >= nodes.Length)
+            {
+                throw new InvalidOperationException($"Child index {childIndex} is out of range.");
+            }
+            result[i] = nodes[childIndex];
+        }
+        return result;
     }
 }

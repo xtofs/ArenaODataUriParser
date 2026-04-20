@@ -1,17 +1,17 @@
 using TreeFormatting;
 
-namespace ODataUriArenaParser.Syntax;
+namespace ODataUriParser.Syntax;
 
 
 /// <summary>
-/// ArenaSyntax is a ref struct that represents the syntax tree of an OData URI. 
+/// Syntax is a ref struct that represents the syntax tree of an OData URI. 
 /// It contains the original request buffer, the tokens, the syntax nodes, 
 /// the child indices, and the index of the root node. 
 /// 
-/// The ArenaSyntax is designed to be used in a single pass parser that constructs 
+/// The Syntax is designed to be used in a single pass parser that constructs 
 /// the syntax tree in place without allocating additional memory for intermediate data structures.
 /// 
-/// Another way to look at it is that ArenaSyntax is a smart view over the arena which is a contiguous 
+/// Another way to look at it is that Syntax is a smart view over the arena which is a contiguous 
 /// block of memory that contains all the tokens and syntax nodes and projects it as tables of 
 /// tokens and syntax nodes with indices to represent the parent-child relationships between the nodes.
 /// </summary>
@@ -20,7 +20,7 @@ namespace ODataUriArenaParser.Syntax;
 /// <param name="nodes"></param>
 /// <param name="childIndices"></param>
 /// <param name="rootNodeIndex"></param>
-public readonly ref struct ArenaSyntax(
+public readonly ref struct Syntax(
         ReadOnlySpan<byte> requestBuffer,
         ReadOnlySpan<Token> tokens,
         ReadOnlySpan<SyntaxNode> nodes,
@@ -66,40 +66,24 @@ public readonly ref struct ArenaSyntax(
         return writer.ToString();
     }
 
-    static readonly TreeFormatter<SyntaxNode, ArenaSyntax> formatter = new TreeFormatter<SyntaxNode, ArenaSyntax>(
+    static readonly TreeFormatter<SyntaxNode, Syntax> formatter = new TreeFormatter<SyntaxNode, Syntax>(
         GetLabel, GetChildren);
 
-    private static string GetLabel(SyntaxNode node, ArenaSyntax syntax)
+    private static string GetLabel(SyntaxNode node, Syntax syntax)
     {
-        var label = $"{node.Kind}";
-        switch (node.Kind)
+        return node.Kind switch
         {
-            case SyntaxKind.Constant or SyntaxKind.VariableAccess or SyntaxKind.PropertyAccess:
-                label += $" '{node.GetTokenText(syntax)}'";
-                break;
-
-            case SyntaxKind.BinaryExpression or SyntaxKind.UnaryExpression:
-                label += $" ({node.GetOperatorKind()})";
-                break;
-        }
-        return label;
+            SyntaxKind.Constant or SyntaxKind.VariableAccess or SyntaxKind.PropertyAccess
+                => $"{node.Kind} '{node.GetTokenText(syntax)}'",
+            SyntaxKind.BinaryExpression or SyntaxKind.UnaryExpression =>
+                $"{node.Kind} ({node.GetOperatorKind()})",
+            _ => throw new NotImplementedException(),
+        };
     }
 
-    private static SyntaxNode[] GetChildren(SyntaxNode node, ArenaSyntax syntax)
+    private static SyntaxNode[] GetChildren(SyntaxNode node, Syntax syntax)
     {
-        var (nodes, _, children, _, _) = syntax;
-        var result = new SyntaxNode[node.ChildCount];
-
-        for (int i = 0; i < node.ChildCount; i++)
-        {
-            int childIndex = children[node.FirstChild + i];
-            if (childIndex < 0 || childIndex >= syntax.Nodes.Length)
-            {
-                throw new InvalidOperationException($"Child index {childIndex} is out of range.");
-            }
-            result[i] = syntax.Nodes[childIndex];
-        }
-        return result;
+        return node.GetChildren(syntax).ToArray();
     }
 }
 

@@ -1,4 +1,4 @@
-namespace ODataUriArenaParser.Semantic;
+namespace ODataUriParser.Semantic;
 
 using System.IO;
 using System.Text;

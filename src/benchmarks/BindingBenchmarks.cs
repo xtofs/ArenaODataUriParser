@@ -1,11 +1,11 @@
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Order;
-using ODataUriArenaParser.Binding;
-using ODataUriArenaParser.Semantic;
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Binding;
+using ODataUriParser.Semantic;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Benchmarks;
+namespace ODataUriParser.Benchmarks;
 
 [MemoryDiagnoser]
 [ShortRunJob]
@@ -25,18 +25,18 @@ public class BindingBenchmarks
     public void Setup()
     {
         input = Encoding.UTF8.GetBytes(Expression);
-        using var arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.Parse(arena, input);
+        using var arena = Arena.RentArena(input);
+        var syntax = Parser.Parse(arena, input);
 
-        // snapshotting ArenaSyntax in one SyntaxSnapshot object 
-        // to allow the parsing to happen in setup and store it in snapshot (because syntax can't be a field/property).   
+        // snapshotting Syntax in one SyntaxSnapshot object to allow 
+        // the parsing to happen in setup and store it in snapshot (because syntax is a ref struct.   
         snapshot = SyntaxSnapshot.FromSyntax(syntax);
     }
 
     [Benchmark]
     public SemanticNode Bind()
     {
-        var syntax = (snapshot ?? throw new InvalidOperationException("Benchmark snapshot has not been initialized.")).ToArenaSyntax();
+        var syntax = (snapshot ?? throw new InvalidOperationException("Benchmark snapshot has not been initialized.")).ToSyntax();
 
         return syntax.Bind();
     }

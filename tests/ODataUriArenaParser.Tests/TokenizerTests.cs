@@ -1,7 +1,7 @@
 using System.Text;
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Tests;
+namespace ODataUriParser.Tests;
 
 public class TokenizerTests
 {
@@ -9,18 +9,20 @@ public class TokenizerTests
         {
             { "name eq @p1", [TokenKind.Identifier, TokenKind.OperatorEq, TokenKind.Variable] },
             { "(price add tax) gt 10", [TokenKind.OpenParen, TokenKind.Identifier, TokenKind.OperatorAdd, TokenKind.Identifier, TokenKind.CloseParen, TokenKind.OperatorGt, TokenKind.Literal] },
-            { "not isDeleted and enabled", [TokenKind.OperatorNot, TokenKind.Identifier, TokenKind.OperatorAnd, TokenKind.Identifier] }
+            { "not isDeleted and enabled", [TokenKind.OperatorNot, TokenKind.Identifier, TokenKind.OperatorAnd, TokenKind.Identifier] },
+            { "a and (b or x)", [TokenKind.Identifier, TokenKind.OperatorAnd, TokenKind.OpenParen, TokenKind.Identifier, TokenKind.OperatorOr, TokenKind.Identifier, TokenKind.CloseParen] },
+            { "(name eq @p1) or (price gt 10)", [TokenKind.OpenParen, TokenKind.Identifier, TokenKind.OperatorEq, TokenKind.Variable, TokenKind.CloseParen, TokenKind.OperatorOr, TokenKind.OpenParen, TokenKind.Identifier, TokenKind.OperatorGt, TokenKind.Literal, TokenKind.CloseParen] },
         };
 
     [Theory]
     [MemberData(nameof(TokenKindCases))]
     public void Tokenize_ProducesExpectedTokenKinds(string expression, TokenKind[] expectedKinds)
     {
-
         var request = Encoding.UTF8.GetBytes(expression);
-        var tokens = new Token[Math.Max(4, request.Length)];
 
-        var count = ArenaTokenizer.Tokenize(request, tokens);
+        // tokenization doesn't require a full arena, so we can just allocate a tokens array for testing.
+        var tokens = new Token[Math.Max(4, request.Length)];
+        var count = Tokenizer.Tokenize(request, tokens);
 
         Assert.Equal(expectedKinds.Length, count);
         for (var i = 0; i < count; i++)
@@ -32,7 +34,7 @@ public class TokenizerTests
     public static TheoryData<string, int, int, string> LiteralSpanCases => new()
         {
             { "'foo'", 1, 3, "foo" },
-            { "'a''b'", 1, 4, "a''b" }
+            { "'a''b'", 1, 4, "a''b" },
         };
 
     [Theory]
@@ -43,7 +45,7 @@ public class TokenizerTests
         var request = Encoding.UTF8.GetBytes(expression);
         var tokens = new Token[4];
 
-        var count = ArenaTokenizer.Tokenize(request, tokens);
+        var count = Tokenizer.Tokenize(request, tokens);
 
         Assert.Equal(1, count);
         Assert.Equal(TokenKind.Literal, tokens[0].Kind);
@@ -65,7 +67,7 @@ public class TokenizerTests
         var request = Encoding.UTF8.GetBytes(expression);
         var tokens = new Token[Math.Max(4, request.Length)];
 
-        var count = ArenaTokenizer.Tokenize(request, tokens);
+        var count = Tokenizer.Tokenize(request, tokens);
 
         Assert.Equal(1, count);
         Assert.Equal(expectedKind, tokens[0].Kind);

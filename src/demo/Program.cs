@@ -1,7 +1,8 @@
-﻿using System.Text;
-using ODataUriArenaParser.Binding;
-using ODataUriArenaParser.Semantic;
-using ODataUriArenaParser.Syntax;
+﻿using System.Buffers;
+using System.Text;
+using ODataUriParser.Binding;
+using ODataUriParser.Semantic;
+using ODataUriParser.Syntax;
 
 
 internal class Program
@@ -11,10 +12,10 @@ internal class Program
         var input = "(name eq 'foo' or name eq @const1) and x.active"u8;
 
         // warmup to ensure JIT and one-time runtime paths are not included in the measurements.
-        Run(input, out var _, out var _);
+        RunAndMeasure(input, out var _, out var _);
 
         // actually measure
-        var stats = Run(input, out var semantic, out var syntax);
+        var stats = RunAndMeasure(input, out var semantic, out var syntax);
         var (parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes) = stats;
 
         Console.WriteLine($"input  `{Encoding.UTF8.GetString(input)}`");
@@ -35,23 +36,24 @@ internal class Program
     }
 
 
-    static MemoryStats Run(ReadOnlySpan<byte> input, out SemanticNode semantic, out ArenaSyntax syntax)
+    static MemoryStats RunAndMeasure(ReadOnlySpan<byte> input, out SemanticNode semantic, out Syntax syntax)
     {
 
-        using var arena = ArenaParser.RentArena(input);
+        using var arena = Arena.RentArena(input);
 
-        _ = ArenaParser.Parse(arena, input);
+        // warmup parse to ensure JIT and one-time runtime paths are not included in the measurements.
+        _ = Parser.Parse(arena, input);
 
         var m0 = AllocationMeasurement.Start();
 
         var m1 = AllocationMeasurement.Start();
-        syntax = ArenaParser.Parse(arena, input);
+        syntax = Parser.Parse(arena, input);
         var parsingAllocatedBytes = m1.Stop();
 
         var m2 = AllocationMeasurement.Start();
         // Measure serializer cost without Console.Out side effects.
-        syntax.Write(TextWriter.Null);
-        var writingAllocatedBytes = m2.Stop();
+        syntax.ToTree(TextWriter.Null);
+        var syntaxWritingAllocatedBytes = m2.Stop();
 
         var m3 = AllocationMeasurement.Start();
         semantic = syntax.Bind();
@@ -62,7 +64,7 @@ internal class Program
 
         var totalAllocatedBytes = m0.Stop();
 
-        return new MemoryStats(parsingAllocatedBytes, writingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes);
+        return new MemoryStats(parsingAllocatedBytes, syntaxWritingAllocatedBytes, bindingAllocatedBytes, totalAllocatedBytes);
     }
 
     internal record MemoryStats(

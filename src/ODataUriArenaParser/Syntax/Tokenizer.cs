@@ -1,6 +1,6 @@
-namespace ODataUriArenaParser.Syntax;
+namespace ODataUriParser.Syntax;
 
-internal static class ArenaTokenizer
+public static class Tokenizer
 {
 
     // and keep tokenizer logic in a dedicated type for parser navigability.
@@ -16,7 +16,7 @@ internal static class ArenaTokenizer
         public int Count { get; set; }
     }
 
-    internal static int Tokenize(ReadOnlySpan<byte> request, Span<Token> tokens)
+    public static int Tokenize(ReadOnlySpan<byte> request, Span<Token> tokens)
     {
         var input = new TokenizeInput(request);
         var state = new TokenizeState(tokens)

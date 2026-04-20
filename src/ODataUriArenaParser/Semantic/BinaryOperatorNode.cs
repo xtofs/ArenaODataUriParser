@@ -1,6 +1,6 @@
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Semantic;
+namespace ODataUriParser.Semantic;
 
 
 public sealed class BinaryOperatorNode(SemanticNode left, SemanticNode right, OperatorKind @operator) : SemanticNode

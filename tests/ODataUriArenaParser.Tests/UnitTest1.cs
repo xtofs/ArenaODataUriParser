@@ -1,12 +1,12 @@
 ﻿using System.Buffers;
 using System.Text;
-using ODataUriArenaParser.Binding;
-using ODataUriArenaParser.Semantic;
-using ODataUriArenaParser.Syntax;
+using ODataUriParser.Binding;
+using ODataUriParser.Semantic;
+using ODataUriParser.Syntax;
 
-namespace ODataUriArenaParser.Tests;
+namespace ODataUriParser.Tests;
 
-public class ArenaSyntaxLifetimeTests
+public class SyntaxLifetimeTests
 {
     [Fact]
     public void Parse_DoesNotAllocate()
@@ -14,13 +14,13 @@ public class ArenaSyntaxLifetimeTests
 
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
 
         // Warm-up parse avoids counting one-time framework/JIT work in the allocation measurement.
-        _ = ArenaParser.Parse(arena, input);
+        _ = Parser.Parse(arena, input);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        var syntax = ArenaParser.Parse(arena, input);
+        var syntax = Parser.Parse(arena, input);
         long after = GC.GetAllocatedBytesForCurrentThread();
 
         // The prompt shape "name eq 'foo'" should become 3 tokens, 3 syntax nodes, and 2 child links.
@@ -36,8 +36,8 @@ public class ArenaSyntaxLifetimeTests
 
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.Parse(arena, input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
+        var syntax = Parser.Parse(arena, input);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         SemanticNode semanticRoot = syntax.Bind(); ;
@@ -63,8 +63,8 @@ public class ArenaSyntaxLifetimeTests
 
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
 
-        IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.Parse(arena, input);
+        IMemoryOwner<byte> arena = Arena.RentArena(input);
+        var syntax = Parser.Parse(arena, input);
         semanticRoot = syntax.Bind(); ;
 
         arena.Dispose();
@@ -85,8 +85,8 @@ public class ArenaSyntaxLifetimeTests
 
         ReadOnlySpan<byte> input = "'bar'"u8;
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.ParseConstant(arena, input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
+        var syntax = Parser.ParseConstant(arena, input);
 
         SemanticNode semantic = syntax.Bind(); ;
 
@@ -100,8 +100,8 @@ public class ArenaSyntaxLifetimeTests
 
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("age");
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
-        var syntax = ArenaParser.ParseProperty(arena, input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
+        var syntax = Parser.ParseProperty(arena, input);
 
         SemanticNode semantic = syntax.Bind(); ;
 
@@ -124,9 +124,9 @@ public class ArenaSyntaxLifetimeTests
     {
         ReadOnlySpan<byte> input = "price add tax mul 2 gt 100 and not isDeleted"u8;
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
 
-        var syntax = ArenaParser.Parse(arena, input);
+        var syntax = Parser.Parse(arena, input);
         SemanticNode root = syntax.Bind();
 
         Assert.True(root is BinaryOperatorNode { Operator: OperatorKind.And });
@@ -170,9 +170,9 @@ public class ArenaSyntaxLifetimeTests
     {
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes(literal);
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
 
-        var syntax = ArenaParser.Parse(arena, input);
+        var syntax = Parser.Parse(arena, input);
         SemanticNode semantic = syntax.Bind();
 
         Assert.True(semantic is ConstantNode);
@@ -187,9 +187,9 @@ public class ArenaSyntaxLifetimeTests
     {
         ReadOnlySpan<byte> input = "Order/Customer/Name eq @p1"u8;
 
-        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
+        using IMemoryOwner<byte> arena = Arena.RentArena(input);
 
-        var syntax = ArenaParser.Parse(arena, input);
+        var syntax = Parser.Parse(arena, input);
         SemanticNode root = syntax.Bind();
 
         Assert.True(root is BinaryOperatorNode { Operator: OperatorKind.Equal });
