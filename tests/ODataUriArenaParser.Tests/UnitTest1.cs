@@ -12,8 +12,9 @@ public class ArenaSyntaxLifetimeTests
     public void Parse_DoesNotAllocate()
     {
 
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
 
         // Warm-up parse avoids counting one-time framework/JIT work in the allocation measurement.
         _ = ArenaParser.Parse(arena, input);
@@ -33,8 +34,9 @@ public class ArenaSyntaxLifetimeTests
     public void Bind_AllocatesAndMaterializesExpectedValues()
     {
 
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
         var syntax = ArenaParser.Parse(arena, input);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
@@ -59,8 +61,9 @@ public class ArenaSyntaxLifetimeTests
         SemanticNode semanticRoot;
 
 
-        IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("name eq 'foo'");
+
+        IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
         var syntax = ArenaParser.Parse(arena, input);
         semanticRoot = syntax.Bind(); ;
 
@@ -80,8 +83,9 @@ public class ArenaSyntaxLifetimeTests
     public void Bind_ConstantExpression_ReturnsConstantNode()
     {
 
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = "'bar'"u8;
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
         var syntax = ArenaParser.ParseConstant(arena, input);
 
         SemanticNode semantic = syntax.Bind(); ;
@@ -94,8 +98,9 @@ public class ArenaSyntaxLifetimeTests
     public void Bind_PropertyExpression_ReturnsPropertyAccessNode()
     {
 
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes("age");
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
         var syntax = ArenaParser.ParseProperty(arena, input);
 
         SemanticNode semantic = syntax.Bind(); ;
@@ -117,8 +122,9 @@ public class ArenaSyntaxLifetimeTests
     [Fact]
     public void Parse_ArithmeticAndLogicalOperators_BindsWithCorrectPrecedence()
     {
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = "price add tax mul 2 gt 100 and not isDeleted"u8;
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
 
         var syntax = ArenaParser.Parse(arena, input);
         SemanticNode root = syntax.Bind();
@@ -162,8 +168,9 @@ public class ArenaSyntaxLifetimeTests
     [InlineData("binary'QUJD'")]
     public void Parse_Literals_AreBoundAsConstants(string literal)
     {
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = Encoding.UTF8.GetBytes(literal);
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
 
         var syntax = ArenaParser.Parse(arena, input);
         SemanticNode semantic = syntax.Bind();
@@ -178,8 +185,9 @@ public class ArenaSyntaxLifetimeTests
     [Fact]
     public void Parse_MemberAndVariableAccess_BindsCorrectly()
     {
-        using IMemoryOwner<byte> arena = MemoryPool<byte>.Shared.Rent(65536);
         ReadOnlySpan<byte> input = "Order/Customer/Name eq @p1"u8;
+
+        using IMemoryOwner<byte> arena = ArenaParser.RentArena(input);
 
         var syntax = ArenaParser.Parse(arena, input);
         SemanticNode root = syntax.Bind();

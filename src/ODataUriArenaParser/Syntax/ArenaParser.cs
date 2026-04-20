@@ -6,21 +6,41 @@ namespace ODataUriArenaParser.Syntax;
 
 public static class ArenaParser
 {
+
+    public static int GetRequiredArenaSize(int inputLength)
+    {
+        if (inputLength < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(inputLength));
+        }
+
+        var (_, _, _, required) = GetArenaLayout(inputLength);
+        return required;
+    }
+
+
+    public static int GetRequiredArenaSize(ReadOnlySpan<byte> input)
+    {
+        return GetRequiredArenaSize(input.Length);
+    }
+
+
+    public static IMemoryOwner<byte> RentArena(int inputLength, MemoryPool<byte>? pool = null)
+    {
+        return (pool ?? MemoryPool<byte>.Shared).Rent(GetRequiredArenaSize(inputLength));
+    }
+
+
+    public static IMemoryOwner<byte> RentArena(ReadOnlySpan<byte> input, MemoryPool<byte>? pool = null)
+    {
+        return RentArena(input.Length, pool);
+    }
+
     public static ArenaSyntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
         Span<byte> storage = arena.Memory.Span;
 
-        int maxTokenCount = Math.Max(4, input.Length);
-        int maxNodeCount = Math.Max(4, (maxTokenCount * 2) + 1);
-        int maxChildCount = maxNodeCount * 2;
-
-        int required = input.Length;
-        required = Align(required, 4);
-        required += maxTokenCount * Unsafe.SizeOf<Token>();
-        required = Align(required, 4);
-        required += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
-        required = Align(required, 4);
-        required += maxChildCount * Unsafe.SizeOf<int>();
+        var (maxTokenCount, maxNodeCount, maxChildCount, required) = GetArenaLayout(input.Length);
 
         if (storage.Length < required)
         {
@@ -675,5 +695,22 @@ public static class ArenaParser
     {
         int mask = alignment - 1;
         return (value + mask) & ~mask;
+    }
+
+    private static (int MaxTokenCount, int MaxNodeCount, int MaxChildCount, int RequiredBytes) GetArenaLayout(int inputLength)
+    {
+        int maxTokenCount = Math.Max(4, inputLength);
+        int maxNodeCount = Math.Max(4, (maxTokenCount * 2) + 1);
+        int maxChildCount = maxNodeCount * 2;
+
+        int required = inputLength;
+        required = Align(required, 4);
+        required += maxTokenCount * Unsafe.SizeOf<Token>();
+        required = Align(required, 4);
+        required += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
+        required = Align(required, 4);
+        required += maxChildCount * Unsafe.SizeOf<int>();
+
+        return (maxTokenCount, maxNodeCount, maxChildCount, required);
     }
 }

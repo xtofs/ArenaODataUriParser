@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using ODataUriArenaParser.Binding;
+﻿using ODataUriArenaParser.Binding;
 using ODataUriArenaParser.Semantic;
 using ODataUriArenaParser.Syntax;
 
@@ -30,7 +29,8 @@ internal class Program
 
     static MemoryStats Run(ReadOnlySpan<byte> input)
     {
-        using var arena = MemoryPool<byte>.Shared.Rent(65536);
+
+        using var arena = ArenaParser.RentArena(input);
 
         _ = ArenaParser.Parse(arena, input);
 
