@@ -72,25 +72,20 @@ public readonly ref struct ArenaSyntax(
     private static string GetLabel(SyntaxNode node, ArenaSyntax syntax)
     {
         var label = $"{node.Kind}";
-        if (node.Kind is SyntaxKind.Constant or SyntaxKind.VariableAccess or SyntaxKind.PropertyAccess)
+        switch (node.Kind)
         {
-            var expected = node.Kind switch
-            {
-                SyntaxKind.Constant => TokenKind.Literal,
-                SyntaxKind.VariableAccess => TokenKind.Variable,
-                SyntaxKind.PropertyAccess => TokenKind.Identifier,
-                _ => throw new InvalidOperationException($"Unexpected syntax kind: {node.Kind}")
-            };
-            label += $" '{node.GetTokenText(expected, syntax)}'";
-        }
-        else if (node.Kind is SyntaxKind.BinaryExpression or SyntaxKind.UnaryExpression)
-        {
-            label += $" ({(OperatorKind)node.Payload})";
+            case SyntaxKind.Constant or SyntaxKind.VariableAccess or SyntaxKind.PropertyAccess:
+                label += $" '{node.GetTokenText(syntax)}'";
+                break;
+
+            case SyntaxKind.BinaryExpression or SyntaxKind.UnaryExpression:
+                label += $" ({node.GetOperatorKind()})";
+                break;
         }
         return label;
     }
 
-    private static IReadOnlyList<SyntaxNode> GetChildren(SyntaxNode node, ArenaSyntax syntax)
+    private static SyntaxNode[] GetChildren(SyntaxNode node, ArenaSyntax syntax)
     {
         var (nodes, _, children, _, _) = syntax;
         var result = new SyntaxNode[node.ChildCount];

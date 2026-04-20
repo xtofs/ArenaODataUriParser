@@ -34,17 +34,17 @@ public static class ArenaBinder
 
     private static ConstantNode BindConstant(ArenaSyntax syntax, SyntaxNode node)
     {
-        return new ConstantNode(ReadTokenText(node.Payload, TokenKind.Literal, syntax));
+        return new ConstantNode(node.GetTokenText(syntax));
     }
 
     private static PropertyAccessNode BindPropertyAccess(ArenaSyntax syntax, SyntaxNode node)
     {
-        return new PropertyAccessNode(ReadTokenText(node.Payload, TokenKind.Identifier, syntax));
+        return new PropertyAccessNode(node.GetTokenText(syntax));
     }
 
     private static VariableAccessNode BindVariableAccess(ArenaSyntax syntax, SyntaxNode node)
     {
-        return new VariableAccessNode(ReadTokenText(node.Payload, TokenKind.Variable, syntax));
+        return new VariableAccessNode(node.GetTokenText(syntax));
     }
 
     private static UnaryOperatorNode BindUnary(SyntaxNode node, ArenaSyntax syntax)

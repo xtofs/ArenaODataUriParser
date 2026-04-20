@@ -1,3 +1,5 @@
+using System.Dynamic;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace ODataUriArenaParser.Syntax;
@@ -14,7 +16,7 @@ public struct SyntaxNode
         return $"{Kind} (Payload: {Payload}, Children: {ChildCount})";
     }
 
-    internal readonly ReadOnlySpan<byte> GetTokenSpan(TokenKind expectedKind, ArenaSyntax syntax)
+    internal readonly ReadOnlySpan<byte> GetTokenSpan(ArenaSyntax syntax)
     {
         var tokenIndex = this.Payload;
         var (_, tokens, _, buffer, _) = syntax;
@@ -25,16 +27,26 @@ public struct SyntaxNode
         }
 
         Token token = tokens[tokenIndex];
-        if (token.Kind != expectedKind)
+
+        if (token.Kind is not TokenKind.Literal and not TokenKind.Variable and not TokenKind.Identifier)
         {
-            throw new InvalidOperationException($"Expected token kind {expectedKind} but found {token.Kind}.");
+            throw new InvalidOperationException($"Cannot get text from syntax node of kind {Kind}.");
         }
 
         return buffer.Slice(token.Offset, token.Length);
     }
 
-    internal readonly string GetTokenText(TokenKind expectedKind, ArenaSyntax syntax)
+    internal readonly string GetTokenText(ArenaSyntax syntax)
     {
-        return Encoding.UTF8.GetString(GetTokenSpan(expectedKind, syntax));
+        return Encoding.UTF8.GetString(GetTokenSpan(syntax));
+    }
+
+    internal readonly OperatorKind GetOperatorKind()
+    {
+        if (Kind is not SyntaxKind.BinaryExpression and not SyntaxKind.UnaryExpression)
+        {
+            throw new InvalidOperationException($"Cannot get operator kind from syntax node of kind {Kind}.");
+        }
+        return (OperatorKind)Payload;
     }
 }
