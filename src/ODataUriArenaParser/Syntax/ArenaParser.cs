@@ -6,7 +6,7 @@ namespace ODataUriArenaParser.Syntax;
 
 public static class ArenaParser
 {
-
+    // Changed per request: these helpers expose parser-owned arena sizing/renting so callers don't duplicate layout math.
     public static int GetRequiredArenaSize(int inputLength)
     {
         if (inputLength < 0)
@@ -38,6 +38,12 @@ public static class ArenaParser
 
     public static ArenaSyntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
+        // Parse pipeline overview:
+        // 1) Partition one arena into request/token/node/child tables.
+        // 2) Tokenize into tokenTable.
+        // 3) Parse with precedence methods while threading shared mutable state
+        //    (tokenIndex, nodeCount, childCount).
+        // 4) Return compact slices as ArenaSyntax.
         Span<byte> storage = arena.Memory.Span;
 
         var (maxTokenCount, maxNodeCount, maxChildCount, required) = GetArenaLayout(input.Length);
@@ -72,6 +78,7 @@ public static class ArenaParser
             throw new InvalidOperationException("Expression is empty.");
         }
 
+        // Shared parser state threaded through all precedence functions.
         int nodeCount = 0;
         int childCount = 0;
         int tokenIndex = 0;
@@ -108,6 +115,7 @@ public static class ArenaParser
         return Parse(arena, input);
     }
 
+    // Precedence level 1 (lowest): OR
     private static int ParseOrExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -128,6 +136,7 @@ public static class ArenaParser
         return left;
     }
 
+    // Precedence level 2: AND
     private static int ParseAndExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -148,6 +157,7 @@ public static class ArenaParser
         return left;
     }
 
+    // Precedence level 3: comparison operators (eq/ne/lt/le/gt/ge)
     private static int ParseComparisonExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -198,6 +208,7 @@ public static class ArenaParser
         return left;
     }
 
+    // Precedence level 4: additive operators (add/sub)
     private static int ParseAdditiveExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -232,6 +243,7 @@ public static class ArenaParser
         return left;
     }
 
+    // Precedence level 5: multiplicative operators (mul/div/mod)
     private static int ParseMultiplicativeExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -270,6 +282,7 @@ public static class ArenaParser
         return left;
     }
 
+    // Precedence level 6 (highest before primary): unary operators (not/-)
     private static int ParseUnaryExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -294,6 +307,7 @@ public static class ArenaParser
         return ParsePrimaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
     }
 
+    // Primary expressions: parenthesized expressions and leaf values.
     private static int ParsePrimaryExpression(
         ReadOnlySpan<byte> request,
         ReadOnlySpan<Token> tokens,
@@ -334,6 +348,7 @@ public static class ArenaParser
 
     private static int CreateLeafNode(SyntaxKind kind, int payload, Span<SyntaxNode> nodes, ref int nodeCount)
     {
+        // Leaf nodes keep token index in Payload and have no children table entry.
         int index = nodeCount;
         nodes[nodeCount++] = new SyntaxNode
         {
@@ -354,6 +369,7 @@ public static class ArenaParser
         Span<int> children,
         ref int childCount)
     {
+        // Unary/binary nodes append child indices into the shared children table.
         int childStart = childCount;
         children[childCount++] = child;
 
@@ -407,6 +423,7 @@ public static class ArenaParser
 
     private static int Tokenize(ReadOnlySpan<byte> request, Span<Token> tokens)
     {
+        // Tokenizer writes token metadata (kind/offset/length) while keeping source bytes in-place.
         int i = 0;
         int count = 0;
 
@@ -496,6 +513,7 @@ public static class ArenaParser
 
     private static TokenKind ClassifyToken(ReadOnlySpan<byte> value)
     {
+        // Classification order matters: operators/variables/literals first, identifier fallback last.
         if (value.Length == 0)
         {
             throw new InvalidOperationException("Token cannot be empty.");
@@ -699,6 +717,7 @@ public static class ArenaParser
 
     private static (int MaxTokenCount, int MaxNodeCount, int MaxChildCount, int RequiredBytes) GetArenaLayout(int inputLength)
     {
+        // Keep arena sizing and alignment in one place so parser and callers stay consistent.
         int maxTokenCount = Math.Max(4, inputLength);
         int maxNodeCount = Math.Max(4, (maxTokenCount * 2) + 1);
         int maxChildCount = maxNodeCount * 2;
