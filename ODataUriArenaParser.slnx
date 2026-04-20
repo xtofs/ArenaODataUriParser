@@ -1,7 +1,8 @@
-
+<?xml version="1.0" encoding="UTF-8"?>
 <Solution>
     <Folder Name="/src/">
         <Project Path="src/demo/demo.csproj" />
+        <Project Path="src/TreeFormatting/TreeFormatting.csproj" />
     </Folder>
     <Folder Name="/src/benchmarks/">
         <Project Path="src/benchmarks/ODataUriArenaParser.Benchmarks.csproj" />

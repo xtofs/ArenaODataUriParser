@@ -88,6 +88,7 @@ public static class ArenaBinder
         return new BinaryOperatorNode(left, right, (OperatorKind)node.Payload);
     }
 
+    [Obsolete("use node.GetTokenText extension method instead")]
     private static string ReadTokenText(int tokenIndex, TokenKind expectedKind, ArenaSyntax syntax)
     {
         var (_, tokens, _, buffer, _) = syntax;

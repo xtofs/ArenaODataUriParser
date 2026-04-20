@@ -5,8 +5,7 @@ namespace ODataUriArenaParser.Tests;
 
 public class TokenizerTests
 {
-    public static TheoryData<string, TokenKind[]> TokenKindCases =>
-        new()
+    public static TheoryData<string, TokenKind[]> TokenKindCases => new()
         {
             { "name eq @p1", [TokenKind.Identifier, TokenKind.OperatorEq, TokenKind.Variable] },
             { "(price add tax) gt 10", [TokenKind.OpenParen, TokenKind.Identifier, TokenKind.OperatorAdd, TokenKind.Identifier, TokenKind.CloseParen, TokenKind.OperatorGt, TokenKind.Literal] },
@@ -30,8 +29,7 @@ public class TokenizerTests
         }
     }
 
-    public static TheoryData<string, int, int, string> LiteralSpanCases =>
-        new()
+    public static TheoryData<string, int, int, string> LiteralSpanCases => new()
         {
             { "'foo'", 1, 3, "foo" },
             { "'a''b'", 1, 4, "a''b" }

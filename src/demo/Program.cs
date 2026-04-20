@@ -21,9 +21,9 @@ internal class Program
         Console.WriteLine($"writing allocated bytes: {writingAllocatedBytes}");
         Console.WriteLine($"binding allocated bytes: {bindingAllocatedBytes}");
         Console.WriteLine($"total allocated bytes: {totalAllocatedBytes}");
-        Console.WriteLine($"resulting semantic graph: {semantic}");
+        Console.WriteLine($"resulting semantic graph:\n {semantic.ToTree()}");
         Console.WriteLine();
-        semantic.ToTree(Console.Out);
+
     }
 
 
@@ -44,6 +44,12 @@ internal class Program
         // Measure serializer cost without Console.Out side effects.
         syntax.Write(TextWriter.Null);
         var writingAllocatedBytes = m2.Stop();
+
+        // this messes up the allocation measurement for the binder, 
+        // for real measurments please comment out the syntx tree writing .
+        // Console.WriteLine("/////////////////////////////////////");
+        // syntax.ToTree(Console.Out);
+        // Console.WriteLine("/////////////////////////////////////");
 
         var m3 = AllocationMeasurement.Start();
         var semantic = syntax.Bind();
