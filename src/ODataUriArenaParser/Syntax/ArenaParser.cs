@@ -6,7 +6,7 @@ namespace ODataUriArenaParser.Syntax;
 
 public static class ArenaParser
 {
-    // Changed per request: these helpers expose parser-owned arena sizing/renting so callers don't duplicate layout math.
+
     public static int GetRequiredArenaSize(int inputLength)
     {
         if (inputLength < 0)
@@ -72,36 +72,28 @@ public static class ArenaParser
         Span<int> childTable = MemoryMarshal.Cast<byte, int>(
             storage.Slice(cursor, maxChildCount * Unsafe.SizeOf<int>()));
 
-        int tokenCount = Tokenize(request, tokenTable);
+        int tokenCount = ArenaTokenizer.Tokenize(request, tokenTable);
         if (tokenCount == 0)
         {
             throw new InvalidOperationException("Expression is empty.");
         }
 
-        // Shared parser state threaded through all precedence functions.
-        int nodeCount = 0;
-        int childCount = 0;
-        int tokenIndex = 0;
 
-        int rootNodeIndex = ParseOrExpression(
-            request,
-            tokenTable[..tokenCount],
-            ref tokenIndex,
-            nodeTable,
-            ref nodeCount,
-            childTable,
-            ref childCount);
+        var parseInput = new ParseInput(request, tokenTable[..tokenCount]);
+        var parseState = new ParseState(nodeTable, childTable);
 
-        if (tokenIndex != tokenCount)
+        int rootNodeIndex = ParseOrExpression(parseInput, ref parseState);
+
+        if (parseState.TokenIndex != tokenCount)
         {
             throw new InvalidOperationException("Unexpected tokens at end of expression.");
         }
 
         return new ArenaSyntax(
             request,
-            tokenTable[..tokenCount],
-            nodeTable[..nodeCount],
-            childTable[..childCount],
+            parseInput.Tokens,
+            parseState.Nodes[..parseState.NodeCount],
+            parseState.Children[..parseState.ChildCount],
             rootNodeIndex);
     }
 
@@ -115,84 +107,93 @@ public static class ArenaParser
         return Parse(arena, input);
     }
 
-    // Precedence level 1 (lowest): OR
-    private static int ParseOrExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private readonly ref struct ParseInput
     {
-        int left = ParseAndExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-
-        while (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorOr))
+        public ParseInput(ReadOnlySpan<byte> request, ReadOnlySpan<Token> tokens)
         {
-            int right = ParseAndExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            left = CreateBinaryNode(OperatorKind.Or, left, right, nodes, ref nodeCount, children, ref childCount);
+            Request = request;
+            Tokens = tokens;
+        }
+
+        public ReadOnlySpan<byte> Request { get; }
+        public ReadOnlySpan<Token> Tokens { get; }
+    }
+
+    private ref struct ParseState
+    {
+        public ParseState(Span<SyntaxNode> nodes, Span<int> children)
+        {
+            Nodes = nodes;
+            Children = children;
+            TokenIndex = 0;
+            NodeCount = 0;
+            ChildCount = 0;
+        }
+
+        public Span<SyntaxNode> Nodes;
+        public Span<int> Children;
+        public int TokenIndex;
+        public int NodeCount;
+        public int ChildCount;
+    }
+
+    // Precedence level 1 (lowest): OR
+    private static int ParseOrExpression(in ParseInput input, ref ParseState state)
+    {
+        int left = ParseAndExpression(input, ref state);
+
+        while (TryConsume(input, ref state, TokenKind.OperatorOr))
+        {
+            int right = ParseAndExpression(input, ref state);
+            left = CreateBinaryNode(OperatorKind.Or, left, right, ref state);
         }
 
         return left;
     }
 
     // Precedence level 2: AND
-    private static int ParseAndExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParseAndExpression(in ParseInput input, ref ParseState state)
     {
-        int left = ParseComparisonExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+        int left = ParseComparisonExpression(input, ref state);
 
-        while (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorAnd))
+        while (TryConsume(input, ref state, TokenKind.OperatorAnd))
         {
-            int right = ParseComparisonExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            left = CreateBinaryNode(OperatorKind.And, left, right, nodes, ref nodeCount, children, ref childCount);
+            int right = ParseComparisonExpression(input, ref state);
+            left = CreateBinaryNode(OperatorKind.And, left, right, ref state);
         }
 
         return left;
     }
 
     // Precedence level 3: comparison operators (eq/ne/lt/le/gt/ge)
-    private static int ParseComparisonExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParseComparisonExpression(in ParseInput input, ref ParseState state)
     {
-        int left = ParseAdditiveExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+        int left = ParseAdditiveExpression(input, ref state);
 
         while (true)
         {
             OperatorKind op;
-            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorEq))
+            if (TryConsume(input, ref state, TokenKind.OperatorEq))
             {
                 op = OperatorKind.Equal;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorNe))
+            else if (TryConsume(input, ref state, TokenKind.OperatorNe))
             {
                 op = OperatorKind.NotEqual;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorLt))
+            else if (TryConsume(input, ref state, TokenKind.OperatorLt))
             {
                 op = OperatorKind.LessThan;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorLe))
+            else if (TryConsume(input, ref state, TokenKind.OperatorLe))
             {
                 op = OperatorKind.LessOrEqual;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorGt))
+            else if (TryConsume(input, ref state, TokenKind.OperatorGt))
             {
                 op = OperatorKind.GreaterThan;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorGe))
+            else if (TryConsume(input, ref state, TokenKind.OperatorGe))
             {
                 op = OperatorKind.GreaterOrEqual;
             }
@@ -201,33 +202,26 @@ public static class ArenaParser
                 break;
             }
 
-            int right = ParseAdditiveExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+            int right = ParseAdditiveExpression(input, ref state);
+            left = CreateBinaryNode(op, left, right, ref state);
         }
 
         return left;
     }
 
     // Precedence level 4: additive operators (add/sub)
-    private static int ParseAdditiveExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParseAdditiveExpression(in ParseInput input, ref ParseState state)
     {
-        int left = ParseMultiplicativeExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+        int left = ParseMultiplicativeExpression(input, ref state);
 
         while (true)
         {
             OperatorKind op;
-            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorAdd))
+            if (TryConsume(input, ref state, TokenKind.OperatorAdd))
             {
                 op = OperatorKind.Add;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorSub))
+            else if (TryConsume(input, ref state, TokenKind.OperatorSub))
             {
                 op = OperatorKind.Subtract;
             }
@@ -236,37 +230,30 @@ public static class ArenaParser
                 break;
             }
 
-            int right = ParseMultiplicativeExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+            int right = ParseMultiplicativeExpression(input, ref state);
+            left = CreateBinaryNode(op, left, right, ref state);
         }
 
         return left;
     }
 
     // Precedence level 5: multiplicative operators (mul/div/mod)
-    private static int ParseMultiplicativeExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParseMultiplicativeExpression(in ParseInput input, ref ParseState state)
     {
-        int left = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+        int left = ParseUnaryExpression(input, ref state);
 
         while (true)
         {
             OperatorKind op;
-            if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorMul))
+            if (TryConsume(input, ref state, TokenKind.OperatorMul))
             {
                 op = OperatorKind.Multiply;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorDiv))
+            else if (TryConsume(input, ref state, TokenKind.OperatorDiv))
             {
                 op = OperatorKind.Divide;
             }
-            else if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorMod))
+            else if (TryConsume(input, ref state, TokenKind.OperatorMod))
             {
                 op = OperatorKind.Modulo;
             }
@@ -275,52 +262,38 @@ public static class ArenaParser
                 break;
             }
 
-            int right = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            left = CreateBinaryNode(op, left, right, nodes, ref nodeCount, children, ref childCount);
+            int right = ParseUnaryExpression(input, ref state);
+            left = CreateBinaryNode(op, left, right, ref state);
         }
 
         return left;
     }
 
     // Precedence level 6 (highest before primary): unary operators (not/-)
-    private static int ParseUnaryExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParseUnaryExpression(in ParseInput input, ref ParseState state)
     {
-        if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorNot))
+        if (TryConsume(input, ref state, TokenKind.OperatorNot))
         {
-            int operand = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            return CreateUnaryNode(OperatorKind.Not, operand, nodes, ref nodeCount, children, ref childCount);
+            int operand = ParseUnaryExpression(input, ref state);
+            return CreateUnaryNode(OperatorKind.Not, operand, ref state);
         }
 
-        if (TryConsume(tokens, ref tokenIndex, TokenKind.OperatorSub))
+        if (TryConsume(input, ref state, TokenKind.OperatorSub))
         {
-            int operand = ParseUnaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            return CreateUnaryNode(OperatorKind.Negate, operand, nodes, ref nodeCount, children, ref childCount);
+            int operand = ParseUnaryExpression(input, ref state);
+            return CreateUnaryNode(OperatorKind.Negate, operand, ref state);
         }
 
-        return ParsePrimaryExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
+        return ParsePrimaryExpression(input, ref state);
     }
 
     // Primary expressions: parenthesized expressions and leaf values.
-    private static int ParsePrimaryExpression(
-        ReadOnlySpan<byte> request,
-        ReadOnlySpan<Token> tokens,
-        ref int tokenIndex,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int ParsePrimaryExpression(in ParseInput input, ref ParseState state)
     {
-        if (TryConsume(tokens, ref tokenIndex, TokenKind.OpenParen))
+        if (TryConsume(input, ref state, TokenKind.OpenParen))
         {
-            int nested = ParseOrExpression(request, tokens, ref tokenIndex, nodes, ref nodeCount, children, ref childCount);
-            if (!TryConsume(tokens, ref tokenIndex, TokenKind.CloseParen))
+            int nested = ParseOrExpression(input, ref state);
+            if (!TryConsume(input, ref state, TokenKind.CloseParen))
             {
                 throw new InvalidOperationException("Missing closing parenthesis.");
             }
@@ -328,29 +301,29 @@ public static class ArenaParser
             return nested;
         }
 
-        if (tokenIndex >= tokens.Length)
+        if (state.TokenIndex >= input.Tokens.Length)
         {
             throw new InvalidOperationException("Unexpected end of expression.");
         }
 
-        int currentTokenIndex = tokenIndex;
-        Token token = tokens[currentTokenIndex];
-        tokenIndex++;
+        int currentTokenIndex = state.TokenIndex;
+        Token token = input.Tokens[currentTokenIndex];
+        state.TokenIndex++;
 
         return token.Kind switch
         {
-            TokenKind.Identifier => CreateLeafNode(SyntaxKind.PropertyAccess, currentTokenIndex, nodes, ref nodeCount),
-            TokenKind.Variable => CreateLeafNode(SyntaxKind.VariableAccess, currentTokenIndex, nodes, ref nodeCount),
-            TokenKind.Literal => CreateLeafNode(SyntaxKind.Constant, currentTokenIndex, nodes, ref nodeCount),
+            TokenKind.Identifier => CreateLeafNode(SyntaxKind.PropertyAccess, currentTokenIndex, ref state),
+            TokenKind.Variable => CreateLeafNode(SyntaxKind.VariableAccess, currentTokenIndex, ref state),
+            TokenKind.Literal => CreateLeafNode(SyntaxKind.Constant, currentTokenIndex, ref state),
             _ => throw new InvalidOperationException($"Unexpected token kind in primary expression: {token.Kind}.")
         };
     }
 
-    private static int CreateLeafNode(SyntaxKind kind, int payload, Span<SyntaxNode> nodes, ref int nodeCount)
+    private static int CreateLeafNode(SyntaxKind kind, int payload, ref ParseState state)
     {
         // Leaf nodes keep token index in Payload and have no children table entry.
-        int index = nodeCount;
-        nodes[nodeCount++] = new SyntaxNode
+        int index = state.NodeCount;
+        state.Nodes[state.NodeCount++] = new SyntaxNode
         {
             Kind = kind,
             FirstChild = -1,
@@ -361,20 +334,14 @@ public static class ArenaParser
         return index;
     }
 
-    private static int CreateUnaryNode(
-        OperatorKind op,
-        int child,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int CreateUnaryNode(OperatorKind op, int child, ref ParseState state)
     {
         // Unary/binary nodes append child indices into the shared children table.
-        int childStart = childCount;
-        children[childCount++] = child;
+        int childStart = state.ChildCount;
+        state.Children[state.ChildCount++] = child;
 
-        int index = nodeCount;
-        nodes[nodeCount++] = new SyntaxNode
+        int index = state.NodeCount;
+        state.Nodes[state.NodeCount++] = new SyntaxNode
         {
             Kind = SyntaxKind.UnaryExpression,
             FirstChild = childStart,
@@ -385,21 +352,14 @@ public static class ArenaParser
         return index;
     }
 
-    private static int CreateBinaryNode(
-        OperatorKind op,
-        int left,
-        int right,
-        Span<SyntaxNode> nodes,
-        ref int nodeCount,
-        Span<int> children,
-        ref int childCount)
+    private static int CreateBinaryNode(OperatorKind op, int left, int right, ref ParseState state)
     {
-        int childStart = childCount;
-        children[childCount++] = left;
-        children[childCount++] = right;
+        int childStart = state.ChildCount;
+        state.Children[state.ChildCount++] = left;
+        state.Children[state.ChildCount++] = right;
 
-        int index = nodeCount;
-        nodes[nodeCount++] = new SyntaxNode
+        int index = state.NodeCount;
+        state.Nodes[state.NodeCount++] = new SyntaxNode
         {
             Kind = SyntaxKind.BinaryExpression,
             FirstChild = childStart,
@@ -410,300 +370,12 @@ public static class ArenaParser
         return index;
     }
 
-    private static bool TryConsume(ReadOnlySpan<Token> tokens, ref int tokenIndex, TokenKind kind)
+    private static bool TryConsume(in ParseInput input, ref ParseState state, TokenKind kind)
     {
-        if (tokenIndex < tokens.Length && tokens[tokenIndex].Kind == kind)
+        if (state.TokenIndex < input.Tokens.Length && input.Tokens[state.TokenIndex].Kind == kind)
         {
-            tokenIndex++;
+            state.TokenIndex++;
             return true;
-        }
-
-        return false;
-    }
-
-    private static int Tokenize(ReadOnlySpan<byte> request, Span<Token> tokens)
-    {
-        // Tokenizer writes token metadata (kind/offset/length) while keeping source bytes in-place.
-        int i = 0;
-        int count = 0;
-
-        while (i < request.Length)
-        {
-            while (i < request.Length && request[i] == (byte)' ')
-            {
-                i++;
-            }
-
-            if (i >= request.Length)
-            {
-                break;
-            }
-
-            byte ch = request[i];
-            if (ch == (byte)'(')
-            {
-                tokens[count++] = new Token { Kind = TokenKind.OpenParen, Offset = i, Length = 1 };
-                i++;
-                continue;
-            }
-
-            if (ch == (byte)')')
-            {
-                tokens[count++] = new Token { Kind = TokenKind.CloseParen, Offset = i, Length = 1 };
-                i++;
-                continue;
-            }
-
-            if (ch == (byte)'\'')
-            {
-                int start = i + 1;
-                i++;
-                while (i < request.Length)
-                {
-                    if (request[i] == (byte)'\'')
-                    {
-                        if (i + 1 < request.Length && request[i + 1] == (byte)'\'')
-                        {
-                            i += 2;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    i++;
-                }
-
-                int len = i - start;
-                if (i < request.Length && request[i] == (byte)'\'')
-                {
-                    i++;
-                }
-
-                tokens[count++] = new Token
-                {
-                    Kind = TokenKind.Literal,
-                    Offset = start,
-                    Length = len
-                };
-
-                continue;
-            }
-
-            int tokenStart = i;
-            while (i < request.Length && request[i] != (byte)' ' && request[i] != (byte)'(' && request[i] != (byte)')')
-            {
-                i++;
-            }
-
-            int tokenLength = i - tokenStart;
-            ReadOnlySpan<byte> value = request.Slice(tokenStart, tokenLength);
-            TokenKind kind = ClassifyToken(value);
-
-            tokens[count++] = new Token
-            {
-                Kind = kind,
-                Offset = tokenStart,
-                Length = tokenLength
-            };
-        }
-
-        return count;
-    }
-
-    private static TokenKind ClassifyToken(ReadOnlySpan<byte> value)
-    {
-        // Classification order matters: operators/variables/literals first, identifier fallback last.
-        if (value.Length == 0)
-        {
-            throw new InvalidOperationException("Token cannot be empty.");
-        }
-
-        if (IsAscii(value, "or"))
-        {
-            return TokenKind.OperatorOr;
-        }
-
-        if (IsAscii(value, "and"))
-        {
-            return TokenKind.OperatorAnd;
-        }
-
-        if (IsAscii(value, "not"))
-        {
-            return TokenKind.OperatorNot;
-        }
-
-        if (IsAscii(value, "eq"))
-        {
-            return TokenKind.OperatorEq;
-        }
-
-        if (IsAscii(value, "ne"))
-        {
-            return TokenKind.OperatorNe;
-        }
-
-        if (IsAscii(value, "lt"))
-        {
-            return TokenKind.OperatorLt;
-        }
-
-        if (IsAscii(value, "le"))
-        {
-            return TokenKind.OperatorLe;
-        }
-
-        if (IsAscii(value, "gt"))
-        {
-            return TokenKind.OperatorGt;
-        }
-
-        if (IsAscii(value, "ge"))
-        {
-            return TokenKind.OperatorGe;
-        }
-
-        if (IsAscii(value, "add"))
-        {
-            return TokenKind.OperatorAdd;
-        }
-
-        if (IsAscii(value, "sub"))
-        {
-            return TokenKind.OperatorSub;
-        }
-
-        if (IsAscii(value, "mul"))
-        {
-            return TokenKind.OperatorMul;
-        }
-
-        if (IsAscii(value, "div"))
-        {
-            return TokenKind.OperatorDiv;
-        }
-
-        if (IsAscii(value, "mod"))
-        {
-            return TokenKind.OperatorMod;
-        }
-
-        if (value[0] == (byte)'@' || IsAscii(value, "$it") || IsAscii(value, "$this"))
-        {
-            return TokenKind.Variable;
-        }
-
-        if (IsLiteralToken(value))
-        {
-            return TokenKind.Literal;
-        }
-
-        return TokenKind.Identifier;
-    }
-
-    private static bool IsLiteralToken(ReadOnlySpan<byte> value)
-    {
-        if (IsAscii(value, "null") || IsAscii(value, "true") || IsAscii(value, "false"))
-        {
-            return true;
-        }
-
-        if (IsAscii(value, "NaN") || IsAscii(value, "INF") || IsAscii(value, "-INF"))
-        {
-            return true;
-        }
-
-        if (StartsWithAscii(value, "duration'") && EndsWith(value, (byte)'\''))
-        {
-            return true;
-        }
-
-        if (StartsWithAscii(value, "guid'") && EndsWith(value, (byte)'\''))
-        {
-            return true;
-        }
-
-        if (StartsWithAscii(value, "binary'") && EndsWith(value, (byte)'\''))
-        {
-            return true;
-        }
-
-        if (Contains(value, (byte)':') || Contains(value, (byte)'T'))
-        {
-            return true;
-        }
-
-        bool hasDigit = false;
-        for (int i = 0; i < value.Length; i++)
-        {
-            byte ch = value[i];
-            if (ch >= (byte)'0' && ch <= (byte)'9')
-            {
-                hasDigit = true;
-                continue;
-            }
-
-            if (ch == (byte)'-' || ch == (byte)'+' || ch == (byte)'.' || ch == (byte)'e' || ch == (byte)'E')
-            {
-                continue;
-            }
-
-            return false;
-        }
-
-        return hasDigit;
-    }
-
-    private static bool IsAscii(ReadOnlySpan<byte> value, string text)
-    {
-        if (value.Length != text.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < text.Length; i++)
-        {
-            if (value[i] != (byte)text[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool StartsWithAscii(ReadOnlySpan<byte> value, string prefix)
-    {
-        if (value.Length < prefix.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < prefix.Length; i++)
-        {
-            if (value[i] != (byte)prefix[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool EndsWith(ReadOnlySpan<byte> value, byte last)
-    {
-        return value.Length > 0 && value[^1] == last;
-    }
-
-    private static bool Contains(ReadOnlySpan<byte> value, byte ch)
-    {
-        for (int i = 0; i < value.Length; i++)
-        {
-            if (value[i] == ch)
-            {
-                return true;
-            }
         }
 
         return false;
