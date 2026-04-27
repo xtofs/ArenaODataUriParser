@@ -2,7 +2,7 @@
 
 ## Overview
 
-ODataUriArenaParser is an allocation-efficient parser for OData URI filter expressions. The parser is designed to minimize allocations and maximize throughput by using a single arena-allocated memory buffer for all parsing stages. The approach is inspired by compiler and query engine design, focusing on:
+ArenaODataUriParser is an allocation-efficient parser for OData URI filter expressions. The parser is designed to minimize allocations and maximize throughput by using a single arena-allocated memory buffer for all parsing stages. The approach is inspired by compiler and query engine design, focusing on:
 
 - **Arena allocation**: All tokens, syntax nodes, and child indices are allocated in a single contiguous memory block, reducing GC pressure and improving cache locality.
 - **Single-pass parsing**: The parser tokenizes and builds the syntax tree in one pass, using spans and ref structs to avoid heap allocations.
@@ -20,7 +20,7 @@ The demo program (`src/demo/Program.cs`) showcases the parser's capabilities by 
 ## Usage
 
 - See `src/demo/Program.cs` for example usage and output.
-- The parser and supporting types are in `src/ODataUriArenaParser/Syntactic/`.
+- The parser and supporting types are in `src/ArenaODataUriParser/Syntactic/`.
 
 ## Requirements
 - .NET 10.0 or later

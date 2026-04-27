@@ -20,7 +20,7 @@
         <Using Include="Xunit" />
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\..\src\ODataUriArenaParser\ODataUriArenaParser.csproj" />
+        <ProjectReference Include="..\..\src\ArenaODataUriParser\ArenaODataUriParser.csproj" />
         <ProjectReference Include="..\..\src\TreeFormatting\TreeFormatter.csproj" />
     </ItemGroup>
 </Project>

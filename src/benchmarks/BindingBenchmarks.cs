@@ -18,7 +18,9 @@ public class BindingBenchmarks
     [Params(
         "name eq 'foo'",
         "(name eq 'foo' or name eq @const1) and x.active",
-        "not (price add tax gt 10 and name eq 'A') or category eq 'tools'")]
+        "not (price add tax gt 10 and name eq 'A') or category eq 'tools'",
+        "(name eq 'foo' or (name eq @const1 and (age gt 30 or (city eq 'Berlin' and (score add 10) lt 100)))) and (x.active or (y.status eq 'pending' and z.count ge 5))"
+    )]
     public string Expression { get; set; } = string.Empty;
 
     [GlobalSetup]

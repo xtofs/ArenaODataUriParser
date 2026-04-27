@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Solution>
-    <Project Path="src/demo/demo.csproj" />
-    <Project Path="src/TreeFormatting/TreeFormatting.csproj" />
-    <Project Path="src/benchmarks/ODataUriArenaParser.Benchmarks.csproj" />
-    <Project Path="src/ODataUriArenaParser/ODataUriArenaParser.csproj" />
-    <Project Path="tests/ODataUriArenaParser.Tests/ODataUriArenaParser.Tests.csproj" />
-</Solution>

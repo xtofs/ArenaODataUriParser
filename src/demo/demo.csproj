@@ -7,6 +7,6 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="..\ODataUriArenaParser\ODataUriArenaParser.csproj" />
+        <ProjectReference Include="..\ArenaODataUriParser\ArenaODataUriParser.csproj" />
     </ItemGroup>
 </Project>
