@@ -4,6 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <RootNamespace>ODataUriParser</RootNamespace>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="..\TreeFormatting\TreeFormatting.csproj" />

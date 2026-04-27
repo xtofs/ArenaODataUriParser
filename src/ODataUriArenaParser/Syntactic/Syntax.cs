@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using TreeFormatting;
 
 namespace ODataUriParser.Syntax;
@@ -32,6 +35,7 @@ public readonly ref struct Syntax(
     public ReadOnlySpan<SyntaxNode> Nodes { get; } = nodes;
     public ReadOnlySpan<int> ChildIndices { get; } = childIndices;
     public int RootNodeIndex { get; } = rootNodeIndex;
+
 
     public void Deconstruct(
        out ReadOnlySpan<SyntaxNode> nodes,
@@ -75,7 +79,7 @@ public readonly ref struct Syntax(
         {
             SyntaxKind.Constant or SyntaxKind.VariableAccess or SyntaxKind.PropertyAccess
                 => $"{node.Kind} '{node.GetTokenText(syntax)}'",
-            SyntaxKind.BinaryExpression or SyntaxKind.UnaryExpression =>
+            SyntaxKind.BinaryOperation or SyntaxKind.UnaryExpression =>
                 $"{node.Kind} ({node.GetOperatorKind()})",
             _ => throw new NotImplementedException(),
         };

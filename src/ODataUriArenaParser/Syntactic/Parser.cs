@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace ODataUriParser.Syntax;
@@ -7,51 +6,29 @@ namespace ODataUriParser.Syntax;
 public static class Parser
 {
 
-
     public static Syntax Parse(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input)
     {
         // Parse pipeline overview:
-        // 1) Partition one arena into request/token/node/child tables.
+        // 1) Partition arena into request/token/node/child tables as writable spans.
         // 2) Tokenize into tokenTable.
         // 3) Parse with precedence methods while threading shared mutable state
         //    (tokenIndex, nodeCount, childCount).
         // 4) Return compact slices as Syntax.
-        Span<byte> storage = arena.Memory.Span;
 
-        var (maxTokenCount, maxNodeCount, maxChildCount, required) = Arena.GetArenaLayout(input.Length);
+        // Step 1: create tables in arena memory.
+        Arena.CreateTables(arena, input, out var text, out var tokenTable, out var nodeTable, out var childTable);
 
-        if (storage.Length < required)
-        {
-            throw new ArgumentException("Arena is too small for parse output.", nameof(arena));
-        }
+        // Step 1a: copy input into arena memory for request buffer.
+        input.CopyTo(text);
 
-        int cursor = 0;
-        Span<byte> request = storage.Slice(cursor, input.Length);
-        input.CopyTo(request);
-        cursor += input.Length;
-
-        cursor = Arena.Align(cursor, 4);
-        Span<Token> tokenTable = MemoryMarshal.Cast<byte, Token>(
-            storage.Slice(cursor, maxTokenCount * Unsafe.SizeOf<Token>()));
-        cursor += maxTokenCount * Unsafe.SizeOf<Token>();
-
-        cursor = Arena.Align(cursor, 4);
-        Span<SyntaxNode> nodeTable = MemoryMarshal.Cast<byte, SyntaxNode>(
-            storage.Slice(cursor, maxNodeCount * Unsafe.SizeOf<SyntaxNode>()));
-        cursor += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
-
-        cursor = Arena.Align(cursor, 4);
-        Span<int> childTable = MemoryMarshal.Cast<byte, int>(
-            storage.Slice(cursor, maxChildCount * Unsafe.SizeOf<int>()));
-
-        int tokenCount = Tokenizer.Tokenize(request, tokenTable);
+        // Step 2: tokenize input directly into arena memory for tokens.
+        int tokenCount = Tokenizer.Tokenize(input, tokenTable);
         if (tokenCount == 0)
         {
             throw new InvalidOperationException("Expression is empty.");
         }
-
-
-        var parseInput = new ParseInput(request, tokenTable[..tokenCount]);
+        // Step 3: parse with precedence climbing methods, using ParseInput and ParseState structs to thread shared mutable state without allocations.
+        var parseInput = new ParseInput(input, tokenTable[..tokenCount]);
         var parseState = new ParseState(nodeTable, childTable);
 
         int rootNodeIndex = ParseOrExpression(parseInput, ref parseState);
@@ -60,9 +37,9 @@ public static class Parser
         {
             throw new InvalidOperationException("Unexpected tokens at end of expression.");
         }
-
+        // Step 4: return Syntax with compact readonly slices of the arena memory for the actual tokens and nodes used.
         return new Syntax(
-            request,
+            text,
             parseInput.Tokens,
             parseState.Nodes[..parseState.NodeCount],
             parseState.Children[..parseState.ChildCount],
@@ -340,7 +317,7 @@ public static class Parser
         int index = state.NodeCount;
         state.Nodes[state.NodeCount++] = new SyntaxNode
         {
-            Kind = SyntaxKind.BinaryExpression,
+            Kind = SyntaxKind.BinaryOperation,
             FirstChild = childStart,
             ChildCount = 2,
             Payload = (ushort)op
@@ -360,48 +337,4 @@ public static class Parser
         return false;
     }
 
-}
-
-public static class Arena
-{
-
-    public static IMemoryOwner<byte> RentArena(ReadOnlySpan<byte> input, MemoryPool<byte>? pool = null)
-    {
-        return (pool ?? MemoryPool<byte>.Shared).Rent(GetRequiredArenaSize(input.Length));
-    }
-
-    internal static int Align(int value, int alignment)
-    {
-        int mask = alignment - 1;
-        return (value + mask) & ~mask;
-    }
-
-    internal static int GetRequiredArenaSize(int inputLength)
-    {
-        if (inputLength < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(inputLength));
-        }
-
-        var (_, _, _, required) = GetArenaLayout(inputLength);
-        return required;
-    }
-
-    internal static (int MaxTokenCount, int MaxNodeCount, int MaxChildCount, int RequiredBytes) GetArenaLayout(int inputLength)
-    {
-        // Keep arena sizing and alignment in one place so parser and callers stay consistent.
-        int maxTokenCount = Math.Max(4, inputLength);
-        int maxNodeCount = Math.Max(4, (maxTokenCount * 2) + 1);
-        int maxChildCount = maxNodeCount * 2;
-
-        int required = inputLength;
-        required = Align(required, 4);
-        required += maxTokenCount * Unsafe.SizeOf<Token>();
-        required = Align(required, 4);
-        required += maxNodeCount * Unsafe.SizeOf<SyntaxNode>();
-        required = Align(required, 4);
-        required += maxChildCount * Unsafe.SizeOf<int>();
-
-        return (maxTokenCount, maxNodeCount, maxChildCount, required);
-    }
 }

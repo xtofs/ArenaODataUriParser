@@ -6,9 +6,18 @@ namespace ODataUriParser.Syntax;
 
 public struct SyntaxNode
 {
+    // Kind is the type of the syntax node, e.g. BinaryOperation, Literal, Identifier, etc.
     public SyntaxKind Kind;
-    public int FirstChild;
+
+    // ChildCount is the number of children of this node. 
+    // The actual child nodes can be found in the Syntax.Children array, starting at index FirstChild.
     public ushort ChildCount;
+
+    // FirstChild is the index in the Syntax.Children array where the children of this node start.
+    public int FirstChild;
+
+    // Payload is a flexible field that can be used to store additional information about the node.
+    // For example, for literal nodes, it can store the index of the token in the token array.
     public ushort Payload;
 
     public override readonly string ToString()
@@ -43,7 +52,7 @@ public struct SyntaxNode
 
     internal readonly OperatorKind GetOperatorKind()
     {
-        if (Kind is not SyntaxKind.BinaryExpression and not SyntaxKind.UnaryExpression)
+        if (Kind is not SyntaxKind.BinaryOperation and not SyntaxKind.UnaryExpression)
         {
             throw new InvalidOperationException($"Cannot get operator kind from syntax node of kind {Kind}.");
         }

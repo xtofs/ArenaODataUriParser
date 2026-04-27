@@ -23,7 +23,7 @@ public static class SyntaxBinder
         SyntaxNode node = nodes[nodeIndex];
         return node.Kind switch
         {
-            SyntaxKind.BinaryExpression => BindBinary(node, syntax),
+            SyntaxKind.BinaryOperation => BindBinary(node, syntax),
             SyntaxKind.PropertyAccess => BindPropertyAccess(syntax, node),
             SyntaxKind.Constant => BindConstant(syntax, node),
             SyntaxKind.VariableAccess => BindVariableAccess(syntax, node),
