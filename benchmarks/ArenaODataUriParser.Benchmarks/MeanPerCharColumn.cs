@@ -14,7 +14,7 @@ internal class MeanPerCharColumn : IColumn
     public int PriorityInCategory => 0;
     public bool IsNumeric => true;
     public UnitType UnitType => UnitType.Time;
-    public string Legend => "Mean time input character (ns)";
+    public string Legend => "Mean time per input character (ns)";
     public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
     {
         var meanNs = summary[benchmarkCase]?.ResultStatistics?.Mean ?? 0.0;

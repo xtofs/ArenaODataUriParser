@@ -21,6 +21,6 @@
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\src\ArenaODataUriParser\ArenaODataUriParser.csproj" />
-        <ProjectReference Include="..\..\src\TreeFormatting\TreeFormatter.csproj" />
+        <ProjectReference Include="..\..\src\TreeFormatting\TreeFormatting.csproj" />
     </ItemGroup>
 </Project>

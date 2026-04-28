@@ -1,12 +1,16 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ArenaODataUriParser\ArenaODataUriParser.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet"
+                          Version="0.15.8" />
+    </ItemGroup>
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
-    <ItemGroup>
-        <ProjectReference Include="..\ArenaODataUriParser\ArenaODataUriParser.csproj" />
-    </ItemGroup>
 </Project>
