@@ -1,11 +1,9 @@
+using System.Drawing;
 using System.Text;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Order;
-using BenchmarkDotNet.Reports;
-using BenchmarkDotNet.Running;
 using ODataUriParser.Syntax;
 
 namespace ODataUriParser.Benchmarks;
@@ -14,7 +12,6 @@ namespace ODataUriParser.Benchmarks;
 [MemoryDiagnoser]
 [ShortRunJob]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
-[Config(typeof(ConfigWithPerCharColumn))]
 public class ParserBenchmarks
 {
     private byte[] input = [];
@@ -42,36 +39,5 @@ public class ParserBenchmarks
         var syntax = Parser.Parse(arena, input);
         return syntax.RootNodeIndex;
     }
-    private class ConfigWithPerCharColumn : ManualConfig
-    {
-        public ConfigWithPerCharColumn()
-        {
-            AddColumn(new MeanPerCharColumn());
-        }
-    }
-
-    private class MeanPerCharColumn : IColumn
-    {
-        public string Id => nameof(MeanPerCharColumn);
-        public string ColumnName => "Mean/Chars (ns)";
-        public bool AlwaysShow => true;
-        public ColumnCategory Category => ColumnCategory.Custom;
-        public int PriorityInCategory => 0;
-        public bool IsNumeric => true;
-        public UnitType UnitType => UnitType.Time;
-        public string Legend => "Mean time input character (ns)";
-        public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
-        {
-            var meanNs = summary[benchmarkCase]?.ResultStatistics?.Mean ?? 0.0;
-            var expr = benchmarkCase.Parameters["Expression"] as string;
-            if (string.IsNullOrEmpty(expr)) return "-";
-            double len = expr.Length;
-            if (len == 0) return "-";
-            return (meanNs / len).ToString("N1");
-        }
-        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style) => GetValue(summary, benchmarkCase);
-        public bool IsAvailable(Summary summary) => true;
-        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
-        public bool IsVisible(Summary summary, BenchmarkCase benchmarkCase) => true;
-    }
 }
+

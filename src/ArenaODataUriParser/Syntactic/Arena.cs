@@ -41,6 +41,12 @@ public static class Arena
         return (maxTokenCount, maxNodeCount, maxChildCount, required);
     }
 
+    public static long GetArenaSize(ReadOnlySpan<byte> input)
+    {
+        var (_, _, _, required) = GetArenaLayout(input.Length);
+        return required;
+    }
+
     internal static void CreateTables(IMemoryOwner<byte> arena, ReadOnlySpan<byte> input,
         out Span<byte> request,
         out Span<Token> tokenTable,
