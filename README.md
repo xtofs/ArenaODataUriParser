@@ -22,6 +22,16 @@ The demo program (`src/demo/Program.cs`) showcases the parser's capabilities by 
 - See `src/demo/Program.cs` for example usage and output.
 - The parser and supporting types are in `src/ArenaODataUriParser/Syntactic/`.
 
+
+## Benchmark Results
+
+| Method | Expression           | Mean      | Error     | StdDev   | Per Char (ns) | Arena Size | Gen0   | Allocated |
+|------- |--------------------- |----------:|----------:|---------:|--------------:|-----------:|-------:|----------:|
+| Parse  | name eq 'foo'        |  47.64 ns | 16.994 ns | 0.931 ns |           3.7 |        712 | 0.0029 |      24 B |
+| Parse  | (name(...)ctive [47] | 125.98 ns | 21.932 ns | 1.202 ns |           2.7 |       2512 | 0.0029 |      24 B |
+| Parse  | not ((...)ools' [64] | 174.21 ns |  8.845 ns | 0.485 ns |           2.7 |       3412 | 0.0029 |      24 B |
+| Parse  | (nam(...) 5)) [159]  | 446.41 ns | 26.882 ns | 1.473 ns |           2.8 |       8448 | 0.0029 |      24 B |
+
 ## Requirements
 - .NET 10.0 or later
 
